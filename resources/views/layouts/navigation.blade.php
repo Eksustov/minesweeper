@@ -32,12 +32,17 @@
 
             <!-- Show when user is NOT logged in -->
             @guest
-                <div class="px-4 py-2 text-gray-700">
-                    <a href="{{ route('login') }}" class="text-blue-500 hover:underline">Login</a>
-                    <a href="{{ route('register') }}" class="ml-4 text-blue-500 hover:underline">Register</a>
+                <div class="flex space-x-4 px-4 py-3">
+                    <a href="{{ route('login') }}"
+                    class="px-4 py-2 rounded-lg bg-gray-500 text-white font-medium hover:bg-blue-600 transition">
+                        Login
+                    </a>
+                    <a href="{{ route('register') }}"
+                    class="px-4 py-2 rounded-lg bg-gray-200 text-gray-700 font-medium hover:bg-gray-300 transition">
+                        Register
+                    </a>
                 </div>
             @endguest
-
 
             @auth
             <div class="hidden sm:flex sm:items-center sm:ms-6">
