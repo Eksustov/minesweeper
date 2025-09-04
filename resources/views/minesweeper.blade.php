@@ -6,7 +6,7 @@
     </x-slot>
 
     <div class="py-12 flex flex-col items-center space-y-4">
-        <div class="bg-white shadow-md rounded-lg p-6 w-max">
+    <div class="bg-white shadow-md rounded-lg p-6 w-full max-w-[95vw]">
             <h1 class="text-2xl font-bold mb-4">Minesweeper</h1>
 
             <!-- Mine counter and status -->
@@ -16,7 +16,9 @@
             </div>
 
             <!-- Grid container -->
-            <div id="game" class="grid grid-cols-8 gap-1"></div>
+            <div class="flex justify-center">
+                <div id="game" class="grid gap-1" style="grid-template-columns: repeat(15, 3rem);"></div>
+            </div>
 
             <!-- Restart button -->
             <button id="restartBtn" class="mt-4 px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600">
@@ -26,9 +28,9 @@
     </div>
 
     <script>
-        const rows = 8;
-        const cols = 8;
-        const minesCount = 10;
+        const rows = 20;
+        const cols = 15;
+        const minesCount = 100;
         let board = [];
         let gameOver = false;
         let flagsPlaced = 0;
