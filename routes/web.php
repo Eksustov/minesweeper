@@ -7,7 +7,7 @@ use App\Http\Controllers\RoomController;
 use App\Models\Room;
 
 Route::get('/', function () {
-    $rooms = Room::all();
+    $rooms = \App\Models\Room::all();
     return view('welcome', compact('rooms'));
 })->name('welcome');
 
@@ -29,8 +29,13 @@ Route::middleware('auth')->group(function () {
     Route::get('/profile', [ProfileController::class, 'edit'])->name('profile.edit');
     Route::patch('/profile', [ProfileController::class, 'update'])->name('profile.update');
     Route::delete('/profile', [ProfileController::class, 'destroy'])->name('profile.destroy');
+
     Route::get('/rooms', [RoomController::class, 'index'])->name('rooms.index');
     Route::post('/rooms', [RoomController::class, 'store'])->name('rooms.store');
+
+    Route::get('/rooms/{room}', [RoomController::class, 'show'])->name('rooms.show');
+    Route::post('/rooms/{room}/join', [RoomController::class, 'join'])->name('rooms.join');
+    Route::post('/rooms/{room}/start', [RoomController::class, 'start'])->name('rooms.start');
 });
 
 require __DIR__.'/auth.php';

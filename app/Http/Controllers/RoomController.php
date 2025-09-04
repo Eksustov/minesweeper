@@ -29,6 +29,33 @@ class RoomController extends Controller
             'max_players' => $request->max_players
         ]);
 
-        return redirect()->route('rooms.index')->with('success', 'Room created: '.$room->code);
+        return redirect()->route('rooms.show', $room)->with('success', 'Room created: '.$room->code);
     }
+
+    public function show(Room $room)
+    {
+        $room->load('players', 'creator'); // Load creator relationship
+        return view('rooms.show', compact('room'));
+    }
+
+    public function join(Room $room)
+    {
+        $user = auth()->user();
+
+        if (!$room->players->contains($user->id)) {
+            $room->players()->attach($user->id);
+        }
+
+        return redirect()->route('rooms.show', $room);
+    }
+
+    public function start(Room $room)
+    {
+        if ($room->user_id !== auth()->id()) abort(403);
+
+        // Redirect to the game page
+        return redirect()->route('minesweeper');
+    }
+
+
 }

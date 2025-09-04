@@ -20,4 +20,9 @@ class Room extends Model
     {
         return $this->belongsTo(User::class, 'user_id');
     }
+
+    public function players()
+    {
+        return $this->belongsToMany(User::class, 'room_user');
+    }
 }
