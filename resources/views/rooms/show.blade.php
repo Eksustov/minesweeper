@@ -12,18 +12,27 @@
             <p><strong>Creator:</strong> {{ $room->creator->name }}</p>
 
             <h4 class="mt-4 font-semibold">Players in this room:</h4>
-            <ul class="list-disc list-inside">
+            <ul id="playersList" class="list-disc list-inside">
                 @foreach($room->players as $player)
                     <li>{{ $player->name }}</li>
                 @endforeach
             </ul>
-
-            <!-- Join button if not in room yet -->
-            @if(! $room->players->contains(auth()->id()))
+            <!-- Join button -->
+            @if(! $room->players->contains(auth()->id()) && $room->players->count() < $room->max_players)
                 <form method="POST" action="{{ route('rooms.join', $room) }}" class="mt-4">
                     @csrf
                     <button type="submit" class="w-full bg-green-500 text-white py-2 rounded hover:bg-green-600">
                         Join Room
+                    </button>
+                </form>
+            @endif
+
+            <!-- Leave button -->
+            @if($room->players->contains(auth()->id()))
+                <form method="POST" action="{{ route('rooms.leave', $room) }}" class="mt-4">
+                    @csrf
+                    <button type="submit" class="w-full bg-red-500 text-white py-2 rounded hover:bg-red-600">
+                        Leave Room
                     </button>
                 </form>
             @endif
@@ -39,4 +48,16 @@
             @endif
         </div>
     </div>
+
+    <script>
+        Echo.channel(`room.{{ $room->id }}`)
+            .listen('.PlayerJoined', (e) => { // add the dot before class name
+                let list = document.getElementById('playersList');
+                list.innerHTML = '';
+                e.players.forEach(player => {
+                    list.innerHTML += `<li>${player.name}</li>`;
+                });
+            });
+    </script>
+
 </x-app-layout>

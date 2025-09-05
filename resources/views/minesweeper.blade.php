@@ -17,7 +17,7 @@
 
             <!-- Grid container -->
             <div class="flex justify-center">
-                <div id="game" class="grid gap-1" style="grid-template-columns: repeat(15, 3rem);"></div>
+                <div id="game" class="grid gap-1"></div>
             </div>
 
             <!-- Restart button -->
@@ -28,9 +28,9 @@
     </div>
 
     <script>
-        const rows = 20;
-        const cols = 15;
-        const minesCount = 100;
+        const rows = 15;
+        const cols = 10;
+        const minesCount = 30;
         let board = [];
         let gameOver = false;
         let flagsPlaced = 0;
@@ -40,6 +40,7 @@
 
         function initGame() {
             const game = document.getElementById('game');
+            game.style.gridTemplateColumns = `repeat(${cols}, 3rem)`;
             game.innerHTML = '';
             board = [];
             gameOver = false;

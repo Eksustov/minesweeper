@@ -32,12 +32,20 @@
         <div class="bg-white shadow-md rounded-lg p-6 w-full max-w-md">
             <h3 class="text-lg font-bold mb-2">Available Rooms</h3>
             <ul>
-                @foreach($rooms as $room)
+                @forelse($rooms as $room)
                     <li class="mb-2 p-2 border rounded flex justify-between items-center">
-                        <span>{{ $room->code }} ({{ ucfirst($room->type) }})</span>
-                        <a href="#" class="bg-green-500 text-white px-2 py-1 rounded hover:bg-green-600">Join</a>
+                        <span>{{ $room->code }} ({{ ucfirst($room->type) }}) — {{ $room->players->count() }}/{{ $room->max_players }}</span>
+                        <form method="POST" action="{{ route('rooms.join', $room) }}">
+                            @csrf
+                            <button type="submit" class="bg-green-500 text-white px-2 py-1 rounded hover:bg-green-600" 
+                                @if($room->players->count() >= $room->max_players) disabled @endif>
+                                    Join
+                                </button>
+                        </form>
                     </li>
-                @endforeach
+                @empty
+                    <li class="text-gray-500">No active rooms right now.</li>
+                @endforelse
             </ul>
         </div>
     </div>

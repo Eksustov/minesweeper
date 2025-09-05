@@ -2,39 +2,58 @@
 
 namespace App\Http\Controllers;
 
-use Illuminate\Http\Request;
 use App\Models\Room;
-use Illuminate\Support\Str;
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Str;
+use App\Events\PlayerJoined;
 
 class RoomController extends Controller
 {
     public function index()
     {
-        $rooms = Room::all(); // Optional: filter only public rooms
-        return view('rooms.index', compact('rooms'));
+        // Only show rooms that are not empty
+        $rooms = Room::with('players')
+            ->whereHas('players')
+            ->latest()
+            ->get();
+
+        return view('welcome', compact('rooms'));
     }
 
     public function store(Request $request)
     {
+        $user = Auth::user();
+
+        // Prevent multiple rooms per creator
+        $existingRoom = Room::where('user_id', $user->id)->first();
+        if ($existingRoom) {
+            return redirect()->route('rooms.show', $existingRoom)
+                ->with('info', 'You already have a room.');
+        }
+
         $request->validate([
             'type' => 'required|in:public,private',
-            'max_players' => 'required|integer|min:2|max:10'
+            'max_players' => 'required|integer|min:2|max:10',
         ]);
 
         $room = Room::create([
-            'code' => strtoupper(Str::random(6)), // Generate a 6-character code
-            'user_id' => Auth::id(),
+            'code' => strtoupper(Str::random(6)),
+            'user_id' => $user->id,
             'type' => $request->type,
-            'max_players' => $request->max_players
+            'max_players' => $request->max_players,
         ]);
 
-        return redirect()->route('rooms.show', $room)->with('success', 'Room created: '.$room->code);
+        // Attach creator as first player
+        $room->players()->attach($user->id);
+
+        return redirect()->route('rooms.show', $room)
+            ->with('success', 'Room created successfully.');
     }
 
     public function show(Room $room)
     {
-        $room->load('players', 'creator'); // Load creator relationship
+        $room->load('players', 'creator');
         return view('rooms.show', compact('room'));
     }
 
@@ -42,20 +61,48 @@ class RoomController extends Controller
     {
         $user = auth()->user();
 
-        if (!$room->players->contains($user->id)) {
-            $room->players()->attach($user->id);
+        // Check if the user is already in the room
+        if ($room->players->contains($user->id)) {
+            return redirect()->route('rooms.show', $room);
         }
 
+        // Check max players
+        if ($room->players->count() >= $room->max_players) {
+            return redirect()->route('welcome')->with('error', 'Room is full.');
+        }
+
+        // Attach user to room
+        $room->players()->attach($user->id);
+
+        // Broadcast the event for realtime updates
+        broadcast(new PlayerJoined($room))->toOthers();
+
+        // Redirect to room page
         return redirect()->route('rooms.show', $room);
     }
 
-    public function start(Room $room)
+    public function leave(Room $room)
     {
-        if ($room->user_id !== auth()->id()) abort(403);
+        $user = auth()->user();
 
-        // Redirect to the game page
-        return redirect()->route('minesweeper');
+        // Detach player from room
+        $room->players()->detach($user->id);
+
+        // If the room is empty after leaving, delete it
+        if ($room->players()->count() === 0) {
+            $room->delete();
+        }
+
+        return redirect()->route('welcome')->with('success', 'You left the room.');
     }
 
 
+    public function start(Room $room)
+    {
+        if ($room->user_id !== Auth::id()) {
+            return back()->with('error', 'Only the creator can start the game.');
+        }
+
+        return view('minesweeper', compact('room'));
+    }
 }
