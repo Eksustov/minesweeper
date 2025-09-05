@@ -75,6 +75,8 @@ class RoomController extends Controller
         $room->players()->attach($user->id);
 
         // Broadcast the event for realtime updates
+        $room->players()->attach($user->id);
+        $room->load('players'); // refresh relation
         broadcast(new PlayerJoined($room))->toOthers();
 
         // Redirect to room page
@@ -87,6 +89,8 @@ class RoomController extends Controller
 
         // Detach player from room
         $room->players()->detach($user->id);
+        $room->load('players'); // refresh relation
+        broadcast(new PlayerJoined($room))->toOthers();
 
         // If the room is empty after leaving, delete it
         if ($room->players()->count() === 0) {

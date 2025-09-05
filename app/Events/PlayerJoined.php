@@ -14,15 +14,19 @@ class PlayerJoined implements ShouldBroadcast
     use Dispatchable, InteractsWithSockets, SerializesModels;
 
     public $players; // only send the players array
+    public $room; // add this
 
     public function __construct(Room $room)
     {
-        $this->players = $room->players()->select('id', 'name')->get();
+        $this->room = $room;
+        $this->players = $room->players()
+            ->select('users.id', 'users.name')
+            ->get();
     }
 
     public function broadcastOn()
     {
-        return new Channel('room.' . $room->id); // make sure $room->id exists here
+        return new Channel('room.' . $this->room->id);
     }
 
     public function broadcastWith()
