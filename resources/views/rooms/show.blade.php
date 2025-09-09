@@ -49,15 +49,8 @@
         </div>
     </div>
 
-    <script>
-        Echo.channel(`room.{{ $room->id }}`)
-            .listen('.PlayerJoined', (e) => { // add the dot before class name
-                let list = document.getElementById('playersList');
-                list.innerHTML = '';
-                e.players.forEach(player => {
-                    list.innerHTML += `<li>${player.name}</li>`;
-                });
-            });
-    </script>
+    <div id="room-meta"
+        data-room-id="{{ $room->id }}">
+    </div>
 
 </x-app-layout>

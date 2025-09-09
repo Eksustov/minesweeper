@@ -61,7 +61,7 @@ class RoomController extends Controller
     {
         $user = auth()->user();
 
-        // Check if the user is already in the room
+        // Check if already in the room
         if ($room->players->contains($user->id)) {
             return redirect()->route('rooms.show', $room);
         }
@@ -71,15 +71,13 @@ class RoomController extends Controller
             return redirect()->route('welcome')->with('error', 'Room is full.');
         }
 
-        // Attach user to room
+        // Attach user once
         $room->players()->attach($user->id);
 
-        // Broadcast the event for realtime updates
-        $room->players()->attach($user->id);
-        $room->load('players'); // refresh relation
+        // Refresh relation and broadcast
+        $room->load('players');
         broadcast(new PlayerJoined($room))->toOthers();
 
-        // Redirect to room page
         return redirect()->route('rooms.show', $room);
     }
 
