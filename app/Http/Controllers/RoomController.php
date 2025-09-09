@@ -2,12 +2,15 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\Game;
 use App\Models\Room;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Str;
 use App\Events\PlayerJoined;
 use App\Events\RoomUpdated;
+use App\Events\GameStarted;
+use App\Services\MinesweeperService;
 
 class RoomController extends Controller
 {
@@ -104,13 +107,12 @@ class RoomController extends Controller
             'mines' => 'nullable|integer|min:1',
         ]);
 
-        $difficulty = $request->difficulty;
-
-        if ($difficulty === 'easy') {
+        // Determine grid size
+        if ($request->difficulty === 'easy') {
             $rows = 8; $cols = 8; $mines = 10;
-        } elseif ($difficulty === 'medium') {
+        } elseif ($request->difficulty === 'medium') {
             $rows = 12; $cols = 12; $mines = 20;
-        } elseif ($difficulty === 'hard') {
+        } elseif ($request->difficulty === 'hard') {
             $rows = 16; $cols = 16; $mines = 40;
         } else { // custom
             $rows = $request->rows;
@@ -118,7 +120,37 @@ class RoomController extends Controller
             $mines = $request->mines;
         }
 
-        return view('minesweeper', compact('room', 'rows', 'cols', 'mines'));
+        // Generate board
+        $board = MinesweeperService::generateBoard($rows, $cols, $mines);
+
+        // Create the game
+        $game = Game::create([
+            'room_id' => $room->id,
+            'difficulty' => $request->difficulty,
+            'rows' => $rows,
+            'cols' => $cols,
+            'mines' => $mines,
+            'board' => $board,
+            'started' => true,
+        ]);
+
+        // Broadcast game started to all players
+        broadcast(new GameStarted($room))->toOthers();
+
+        return redirect()->route('rooms.game', $room);
+    }
+
+    public function game(Room $room)
+    {
+        $game = $room->game()->firstOrFail();  // assumes room has one game
+
+        return view('minesweeper', [
+            'room' => $room,
+            'rows' => $game->rows,
+            'cols' => $game->cols,
+            'minesCount' => $game->mines,
+            'board' => $game->board,
+        ]);
     }
 
     public function roomsJson()

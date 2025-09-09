@@ -6,8 +6,6 @@ use App\Http\Controllers\MinesweeperController;
 use App\Http\Controllers\RoomController;
 use App\Models\Room;
 
-Route::get('/rooms/json', [RoomController::class, 'roomsJson']);
-
 Route::get('/', function () {
     $rooms = \App\Models\Room::all();
     return view('welcome', compact('rooms'));
@@ -28,6 +26,7 @@ Route::get('/dashboard', function () {
 })->middleware(['auth', 'verified'])->name('dashboard');
 
 Route::middleware('auth')->group(function () {
+    Route::get('/rooms/json', [RoomController::class, 'roomsJson']);
     Route::get('/profile', [ProfileController::class, 'edit'])->name('profile.edit');
     Route::patch('/profile', [ProfileController::class, 'update'])->name('profile.update');
     Route::delete('/profile', [ProfileController::class, 'destroy'])->name('profile.destroy');
@@ -39,6 +38,7 @@ Route::middleware('auth')->group(function () {
     Route::post('/rooms/{room}/join', [RoomController::class, 'join'])->name('rooms.join');
     Route::post('/rooms/{room}/leave', [RoomController::class, 'leave'])->name('rooms.leave');
     Route::post('/rooms/{room}/start', [RoomController::class, 'start'])->name('rooms.start');
+    Route::get('/rooms/{room}/game', [RoomController::class, 'game'])->name('rooms.game');
 });
 
 require __DIR__.'/auth.php';
