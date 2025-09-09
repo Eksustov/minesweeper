@@ -7,17 +7,13 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Str;
 use App\Events\PlayerJoined;
+use App\Events\RoomUpdated;
 
 class RoomController extends Controller
 {
     public function index()
     {
-        // Only show rooms that are not empty
-        $rooms = Room::with('players')
-            ->whereHas('players')
-            ->latest()
-            ->get();
-
+        $rooms = Room::with('players')->latest()->get();
         return view('welcome', compact('rooms'));
     }
 
@@ -26,8 +22,7 @@ class RoomController extends Controller
         $user = Auth::user();
 
         // Prevent multiple rooms per creator
-        $existingRoom = Room::where('user_id', $user->id)->first();
-        if ($existingRoom) {
+        if ($existingRoom = Room::where('user_id', $user->id)->first()) {
             return redirect()->route('rooms.show', $existingRoom)
                 ->with('info', 'You already have a room.');
         }
@@ -47,6 +42,10 @@ class RoomController extends Controller
         // Attach creator as first player
         $room->players()->attach($user->id);
 
+        // Broadcast new room
+        $room->load('players');
+        broadcast(new RoomUpdated($room))->toOthers();
+
         return redirect()->route('rooms.show', $room)
             ->with('success', 'Room created successfully.');
     }
@@ -61,22 +60,16 @@ class RoomController extends Controller
     {
         $user = auth()->user();
 
-        // Check if already in the room
-        if ($room->players->contains($user->id)) {
-            return redirect()->route('rooms.show', $room);
-        }
+        if ($room->players->contains($user->id)) return redirect()->route('rooms.show', $room);
 
-        // Check max players
-        if ($room->players->count() >= $room->max_players) {
-            return redirect()->route('welcome')->with('error', 'Room is full.');
-        }
+        if ($room->players->count() >= $room->max_players) return redirect()->route('welcome')->with('error', 'Room is full.');
 
-        // Attach user once
         $room->players()->attach($user->id);
 
-        // Refresh relation and broadcast
+        // Broadcast both
         $room->load('players');
-        broadcast(new PlayerJoined($room))->toOthers();
+        broadcast(new RoomUpdated($room))->toOthers();     // update room list
+        broadcast(new PlayerJoined($room))->toOthers();    // update player list
 
         return redirect()->route('rooms.show', $room);
     }
@@ -84,20 +77,19 @@ class RoomController extends Controller
     public function leave(Room $room)
     {
         $user = auth()->user();
-
-        // Detach player from room
         $room->players()->detach($user->id);
-        $room->load('players'); // refresh relation
-        broadcast(new PlayerJoined($room))->toOthers();
+        $room->load('players');
 
-        // If the room is empty after leaving, delete it
         if ($room->players()->count() === 0) {
+            broadcast(new RoomUpdated($room))->toOthers();
             $room->delete();
+        } else {
+            broadcast(new RoomUpdated($room))->toOthers();
+            broadcast(new PlayerJoined($room))->toOthers(); // <-- ensure player list updates
         }
 
         return redirect()->route('welcome')->with('success', 'You left the room.');
     }
-
 
     public function start(Room $room)
     {
@@ -107,4 +99,20 @@ class RoomController extends Controller
 
         return view('minesweeper', compact('room'));
     }
+
+    public function roomsJson()
+    {
+        $rooms = Room::with('players')->latest()->get()->map(function($room) {
+            return [
+                'id' => $room->id,
+                'code' => $room->code,
+                'type' => $room->type,
+                'max_players' => $room->max_players,
+                'current_players' => $room->players->count(),
+            ];
+        });
+
+        return response()->json($rooms);
+    }
+
 }

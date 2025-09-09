@@ -6,6 +6,8 @@ use App\Http\Controllers\MinesweeperController;
 use App\Http\Controllers\RoomController;
 use App\Models\Room;
 
+Route::get('/rooms/json', [RoomController::class, 'roomsJson']);
+
 Route::get('/', function () {
     $rooms = \App\Models\Room::all();
     return view('welcome', compact('rooms'));

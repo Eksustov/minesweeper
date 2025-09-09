@@ -2,35 +2,37 @@
 
 namespace App\Events;
 
+use App\Models\Room;
 use Illuminate\Broadcasting\Channel;
 use Illuminate\Broadcasting\InteractsWithSockets;
-use Illuminate\Broadcasting\PresenceChannel;
-use Illuminate\Broadcasting\PrivateChannel;
-use Illuminate\Contracts\Broadcasting\ShouldBroadcast;
 use Illuminate\Foundation\Events\Dispatchable;
+use Illuminate\Contracts\Broadcasting\ShouldBroadcast;
 use Illuminate\Queue\SerializesModels;
 
-class RoomUpdated
+class RoomUpdated implements ShouldBroadcast
 {
     use Dispatchable, InteractsWithSockets, SerializesModels;
 
-    /**
-     * Create a new event instance.
-     */
-    public function __construct()
+    public $room;
+
+    public function __construct(Room $room)
     {
-        //
+        $this->room = $room->load('players');
     }
 
-    /**
-     * Get the channels the event should broadcast on.
-     *
-     * @return array<int, \Illuminate\Broadcasting\Channel>
-     */
-    public function broadcastOn(): array
+    public function broadcastOn()
+    {
+        return new Channel('rooms');
+    }
+
+    public function broadcastWith()
     {
         return [
-            new PrivateChannel('channel-name'),
+            'id' => $this->room->id,
+            'code' => $this->room->code,
+            'type' => $this->room->type,
+            'max_players' => $this->room->max_players,
+            'current_players' => $this->room->players->count(),
         ];
     }
 }
