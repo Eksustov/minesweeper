@@ -41,11 +41,40 @@
             @if($room->user_id === auth()->id())
                 <form method="POST" action="{{ route('rooms.start', $room) }}" class="mt-4">
                     @csrf
+                    <div class="mb-4">
+                        <label class="block text-gray-700 font-semibold">Difficulty</label>
+                        <select name="difficulty" id="difficulty" class="w-full border p-2 rounded">
+                            <option value="easy">Easy (8x8, 10 mines)</option>
+                            <option value="medium">Medium (12x12, 20 mines)</option>
+                            <option value="hard">Hard (16x16, 40 mines)</option>
+                            <option value="custom">Custom</option>
+                        </select>
+                    </div>
+
+                    <div id="customSettings" class="hidden mb-4">
+                        <label class="block text-gray-700">Rows</label>
+                        <input type="number" name="rows" class="w-full border p-2 rounded" min="5" max="50" value="10">
+                        <label class="block text-gray-700 mt-2">Columns</label>
+                        <input type="number" name="cols" class="w-full border p-2 rounded" min="5" max="50" value="10">
+                        <label class="block text-gray-700 mt-2">Mines</label>
+                        <input type="number" name="mines" class="w-full border p-2 rounded" min="1" value="10">
+                    </div>
+
                     <button type="submit" class="w-full bg-blue-500 text-white py-2 rounded hover:bg-blue-600">
                         Start Game
                     </button>
                 </form>
+
+                <script>
+                    const difficultySelect = document.getElementById('difficulty');
+                    const customSettings = document.getElementById('customSettings');
+
+                    difficultySelect.addEventListener('change', () => {
+                        customSettings.classList.toggle('hidden', difficultySelect.value !== 'custom');
+                    });
+                </script>
             @endif
+
         </div>
     </div>
 

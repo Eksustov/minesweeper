@@ -28,9 +28,9 @@
     </div>
 
     <script>
-        const rows = 15;
-        const cols = 10;
-        const minesCount = 30;
+        const rows = {{ $rows }};
+        const cols = {{ $cols }};
+        const minesCount = {{ $mines }};
         let board = [];
         let gameOver = false;
         let flagsPlaced = 0;

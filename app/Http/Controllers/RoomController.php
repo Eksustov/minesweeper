@@ -91,13 +91,34 @@ class RoomController extends Controller
         return redirect()->route('welcome')->with('success', 'You left the room.');
     }
 
-    public function start(Room $room)
+    public function start(Request $request, Room $room)
     {
-        if ($room->user_id !== Auth::id()) {
+        if ($room->user_id !== auth()->id()) {
             return back()->with('error', 'Only the creator can start the game.');
         }
 
-        return view('minesweeper', compact('room'));
+        $request->validate([
+            'difficulty' => 'required|in:easy,medium,hard,custom',
+            'rows' => 'nullable|integer|min:5|max:50',
+            'cols' => 'nullable|integer|min:5|max:50',
+            'mines' => 'nullable|integer|min:1',
+        ]);
+
+        $difficulty = $request->difficulty;
+
+        if ($difficulty === 'easy') {
+            $rows = 8; $cols = 8; $mines = 10;
+        } elseif ($difficulty === 'medium') {
+            $rows = 12; $cols = 12; $mines = 20;
+        } elseif ($difficulty === 'hard') {
+            $rows = 16; $cols = 16; $mines = 40;
+        } else { // custom
+            $rows = $request->rows;
+            $cols = $request->cols;
+            $mines = $request->mines;
+        }
+
+        return view('minesweeper', compact('room', 'rows', 'cols', 'mines'));
     }
 
     public function roomsJson()
