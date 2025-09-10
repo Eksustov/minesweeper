@@ -24,7 +24,6 @@ class RoomController extends Controller
     {
         $user = Auth::user();
 
-        // Prevent multiple rooms per creator
         if ($existingRoom = Room::where('user_id', $user->id)->first()) {
             return redirect()->route('rooms.show', $existingRoom)
                 ->with('info', 'You already have a room.');
@@ -42,10 +41,8 @@ class RoomController extends Controller
             'max_players' => $request->max_players,
         ]);
 
-        // Attach creator as first player
         $room->players()->attach($user->id);
 
-        // Broadcast new room
         $room->load('players');
         broadcast(new RoomUpdated($room))->toOthers();
 
@@ -54,51 +51,40 @@ class RoomController extends Controller
     }
 
     public function show(Room $room)
-        {
-            $room->load('players', 'creator');
-        
-            // Check if there is an active game
-            $activeGame = $room->game()->where('started', true)->latest()->first();
-        
-            return view('rooms.show', [
-                'room' => $room,
-                'activeGame' => $activeGame,
-            ]);
-        }
+    {
+        $room->load('players', 'creator');
+
+        // Get active game if exists
+        $activeGame = $room->game()->where('started', true)->latest()->first();
+
+        return view('rooms.show', [
+            'room' => $room,
+            'activeGame' => $activeGame,
+        ]);
+    }
 
     public function join(Room $room)
     {
         $user = auth()->user();
 
-        if ($room->players->contains($user->id)) return redirect()->route('rooms.show', $room);
+        // If already in the room, redirect to room
+        if ($room->players->contains($user->id)) {
+            return redirect()->route('rooms.show', $room);
+        }
 
-        if ($room->players->count() >= $room->max_players) return redirect()->route('welcome')->with('error', 'Room is full.');
+        // Allow joining even if the room is “full” for existing members
+        if ($room->players->count() >= $room->max_players) {
+            return redirect()->route('rooms.show', $room)
+                ->with('error', 'Room is full.');
+        }
 
         $room->players()->attach($user->id);
 
-        // Broadcast both
         $room->load('players');
-        broadcast(new RoomUpdated($room))->toOthers();     // update room list
-        broadcast(new PlayerJoined($room))->toOthers();    // update player list
+        broadcast(new RoomUpdated($room))->toOthers();
+        broadcast(new PlayerJoined($room))->toOthers();
 
         return redirect()->route('rooms.show', $room);
-    }
-
-    public function leave(Room $room)
-    {
-        $user = auth()->user();
-        $room->players()->detach($user->id);
-        $room->load('players');
-
-        if ($room->players()->count() === 0) {
-            broadcast(new RoomUpdated($room))->toOthers();
-            $room->delete();
-        } else {
-            broadcast(new RoomUpdated($room))->toOthers();
-            broadcast(new PlayerJoined($room))->toOthers(); // <-- ensure player list updates
-        }
-
-        return redirect()->route('welcome')->with('success', 'You left the room.');
     }
 
     public function start(Room $room, Request $request)
@@ -108,28 +94,27 @@ class RoomController extends Controller
         }
 
         // Check if there's already an active game
-        $game = $room->game()->where('started', true)->latest()->first();
-
-        if ($game) {
-            // Redirect to existing game instead of creating a new one
+        $existingGame = $room->game()->where('started', true)->latest()->first();
+        if ($existingGame) {
             return redirect()->route('rooms.game', $room);
         }
 
-        // Determine settings
         $difficulty = $request->input('difficulty', 'easy');
         $rows = 8; $cols = 8; $mines = 10;
 
         if ($difficulty === 'medium') {
-            $rows = $cols = 12; $mines = 20;
+            $rows = $cols = 12;
+            $mines = 20;
         } elseif ($difficulty === 'hard') {
-            $rows = $cols = 16; $mines = 40;
+            $rows = $cols = 16;
+            $mines = 40;
         } elseif ($difficulty === 'custom') {
             $rows = (int) $request->input('rows', 10);
             $cols = (int) $request->input('cols', 10);
             $mines = (int) $request->input('mines', 10);
         }
 
-        // Create a new game only if none exists
+        // Create one shared game for the room
         $game = $room->game()->create([
             'difficulty' => $difficulty,
             'rows' => $rows,
@@ -147,33 +132,31 @@ class RoomController extends Controller
     public function game(Room $room)
     {
         $game = $room->game()->where('started', true)->latest()->firstOrFail();
-    
+
         return view('minesweeper', [
             'room' => $room,
             'game' => $game,
             'rows' => $game->rows,
             'cols' => $game->cols,
             'mines' => $game->mines,
-            'board' => $game->board,
+            'board' => $game->board, // all players use same board
         ]);
     }
 
-    public function roomsJson()
+    public function leave(Room $room)
     {
-        $userId = auth()->id();
+        $user = auth()->user();
+        $room->players()->detach($user->id);
+        $room->load('players');
 
-        $rooms = Room::with('players')->latest()->get()->map(function($room) use ($userId) {
-            return [
-                'id' => $room->id,
-                'code' => $room->code,
-                'type' => $room->type,
-                'max_players' => $room->max_players,
-                'current_players' => $room->players->count(),
-                'isInRoom' => $room->players->contains($userId),
-            ];
-        });
+        if ($room->players->count() === 0) {
+            broadcast(new RoomUpdated($room))->toOthers();
+            $room->delete();
+        } else {
+            broadcast(new RoomUpdated($room))->toOthers();
+            broadcast(new PlayerJoined($room))->toOthers();
+        }
 
-        return response()->json($rooms);
+        return redirect()->route('welcome')->with('success', 'You left the room.');
     }
-
 }

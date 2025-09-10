@@ -1,3 +1,4 @@
+@section('title', $room->code)
 <x-app-layout>
     <x-slot name="header">
         <h2 class="font-semibold text-xl text-gray-800 leading-tight">
@@ -17,8 +18,9 @@
                     <li>{{ $player->name }}</li>
                 @endforeach
             </ul>
-            <!-- Join button -->
-            @if(! $room->players->contains(auth()->id()) && $room->players->count() < $room->max_players)
+
+            <!-- Join room button if not in room -->
+            @if(!$room->players->contains(auth()->id()) && $room->players->count() < $room->max_players)
                 <form method="POST" action="{{ route('rooms.join', $room) }}" class="mt-4">
                     @csrf
                     <button type="submit" class="w-full bg-green-500 text-white py-2 rounded hover:bg-green-600">
@@ -27,7 +29,7 @@
                 </form>
             @endif
 
-            <!-- Leave button -->
+            <!-- Leave room button if in room -->
             @if($room->players->contains(auth()->id()))
                 <form method="POST" action="{{ route('rooms.leave', $room) }}" class="mt-4">
                     @csrf
@@ -37,16 +39,16 @@
                 </form>
             @endif
 
+            <!-- Show join game if active -->
             @if($activeGame)
-                <form method="GET" action="{{ route('rooms.game', $room) }}">
+                <form method="GET" action="{{ route('rooms.game', $room) }}" class="mt-4">
                     <button type="submit" class="w-full bg-purple-500 text-white py-2 rounded hover:bg-purple-600">
                         Join Game
                     </button>
                 </form>
-            @endif
 
-            <!-- Start button if creator -->
-            @if($room->user_id === auth()->id())
+            <!-- Show start game options only to creator if no active game -->
+            @elseif($room->user_id === auth()->id())
                 <form method="POST" action="{{ route('rooms.start', $room) }}" class="mt-4">
                     @csrf
                     <div class="mb-4">
@@ -68,51 +70,45 @@
                         <input type="number" name="mines" class="w-full border p-2 rounded" min="1" value="10">
                     </div>
 
-                    @if($room->user_id === auth()->id() && !$activeGame)
-                        <button type="submit" class="w-full bg-blue-500 text-white py-2 rounded hover:bg-blue-600">
-                            Start Game
-                        </button>
-                    @endif
-
+                    <button type="submit" class="w-full bg-blue-500 text-white py-2 rounded hover:bg-blue-600">
+                        Start Game
+                    </button>
                 </form>
-
-                <script>
-                    document.addEventListener("DOMContentLoaded", () => {
-                        const meta = document.getElementById("room-meta");
-                        if (!meta) return;
-
-                        const roomId = meta.dataset.roomId;
-
-                        window.Echo.channel(`room.${roomId}`)
-                            .listen(".GameStarted", (e) => {
-                                // Redirect all other players into the same game
-                                window.location.href = `/games/${e.gameId}`;
-                            });
-                    });
-                    const difficultySelect = document.getElementById('difficulty');
-                    const customSettings = document.getElementById('customSettings');
-
-                    function toggleCustom() {
-                        const isCustom = difficultySelect.value === 'custom';
-                        customSettings.classList.toggle('hidden', !isCustom);
-
-                        // Disable inputs when not custom
-                        document.querySelectorAll('#customSettings input').forEach(input => {
-                            input.disabled = !isCustom;
-                        });
-                    }
-
-                    difficultySelect.addEventListener('change', toggleCustom);
-                    toggleCustom(); // run once on page load
-                </script>
-
             @endif
 
         </div>
     </div>
 
-    <div id="room-meta"
-        data-room-id="{{ $room->id }}">
-    </div>
+    <div id="room-meta" data-room-id="{{ $room->id }}"></div>
 
+    <script>
+        document.addEventListener("DOMContentLoaded", () => {
+            const meta = document.getElementById("room-meta");
+            if (!meta) return;
+
+            const roomId = meta.dataset.roomId;
+
+            // Listen for GameStarted event
+            window.Echo.channel(`room.${roomId}`)
+                .listen(".GameStarted", (e) => {
+                    window.location.href = `/games/${e.gameId}`;
+                });
+
+            const difficultySelect = document.getElementById('difficulty');
+            const customSettings = document.getElementById('customSettings');
+
+            function toggleCustom() {
+                const isCustom = difficultySelect.value === 'custom';
+                customSettings.classList.toggle('hidden', !isCustom);
+                document.querySelectorAll('#customSettings input').forEach(input => {
+                    input.disabled = !isCustom;
+                });
+            }
+
+            if (difficultySelect) {
+                difficultySelect.addEventListener('change', toggleCustom);
+                toggleCustom();
+            }
+        });
+    </script>
 </x-app-layout>
