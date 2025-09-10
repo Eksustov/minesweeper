@@ -133,6 +133,7 @@ class RoomController extends Controller
             'board' => $board,
             'started' => true,
         ]);
+        dd($request->all());
 
         // Broadcast game started to all players
         broadcast(new GameStarted($room))->toOthers();
