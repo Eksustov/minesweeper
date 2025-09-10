@@ -58,7 +58,7 @@ class RoomController extends Controller
             $room->load('players', 'creator');
         
             // Check if there is an active game
-            $activeGame = $room->game()->latest()->first();
+            $activeGame = $room->game()->where('started', true)->latest()->first();
         
             return view('rooms.show', [
                 'room' => $room,
@@ -107,13 +107,15 @@ class RoomController extends Controller
             return back()->with('error', 'Only the creator can start the game.');
         }
 
-        // Check if a game already exists
-        $existingGame = $room->game()->latest()->first();
-        if ($existingGame) {
+        // Check if there's already an active game
+        $game = $room->game()->where('started', true)->latest()->first();
+
+        if ($game) {
+            // Redirect to existing game instead of creating a new one
             return redirect()->route('rooms.game', $room);
         }
 
-        // Determine settings based on difficulty
+        // Determine settings
         $difficulty = $request->input('difficulty', 'easy');
         $rows = 8; $cols = 8; $mines = 10;
 
@@ -127,25 +129,24 @@ class RoomController extends Controller
             $mines = (int) $request->input('mines', 10);
         }
 
-        // Create the game only if it doesn’t exist
+        // Create a new game only if none exists
         $game = $room->game()->create([
             'difficulty' => $difficulty,
             'rows' => $rows,
             'cols' => $cols,
             'mines' => $mines,
-            'board' => json_encode(app('App\Services\MinesweeperService')->generateBoard($rows, $cols, $mines)),
+            'board' => json_encode(app(MinesweeperService::class)->generateBoard($rows, $cols, $mines)),
             'started' => true,
         ]);
 
-        // Broadcast game started
         broadcast(new GameStarted($room, $game->id))->toOthers();
 
-        return redirect()->route('rooms.game', $room);
+        return redirect()->route('rooms.game', [$room]);
     }
 
     public function game(Room $room)
     {
-        $game = $room->game()->latest()->firstOrFail();
+        $game = $room->game()->where('started', true)->latest()->firstOrFail();
     
         return view('minesweeper', [
             'room' => $room,

@@ -38,7 +38,7 @@
             @endif
 
             @if($activeGame)
-                <form method="GET" action="{{ route('rooms.game', $room) }}" class="mt-4">
+                <form method="GET" action="{{ route('rooms.game', $room) }}">
                     <button type="submit" class="w-full bg-purple-500 text-white py-2 rounded hover:bg-purple-600">
                         Join Game
                     </button>
