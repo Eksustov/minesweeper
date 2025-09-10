@@ -30,7 +30,7 @@
     <script>
         const rows = {{ $rows }};
         const cols = {{ $cols }};
-        const minesCount = {{ $minesCount }};
+        const minesCount = {{ $mines }};
         let board = [];
         let gameOver = false;
         let flagsPlaced = 0;

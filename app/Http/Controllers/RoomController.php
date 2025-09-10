@@ -54,10 +54,17 @@ class RoomController extends Controller
     }
 
     public function show(Room $room)
-    {
-        $room->load('players', 'creator');
-        return view('rooms.show', compact('room'));
-    }
+        {
+            $room->load('players', 'creator');
+        
+            // Check if there is an active game
+            $activeGame = $room->game()->latest()->first();
+        
+            return view('rooms.show', [
+                'room' => $room,
+                'activeGame' => $activeGame,
+            ]);
+        }
 
     public function join(Room $room)
     {
@@ -94,75 +101,74 @@ class RoomController extends Controller
         return redirect()->route('welcome')->with('success', 'You left the room.');
     }
 
-    public function start(Request $request, Room $room)
+    public function start(Room $room, Request $request)
     {
         if ($room->user_id !== auth()->id()) {
             return back()->with('error', 'Only the creator can start the game.');
         }
 
-        $request->validate([
-            'difficulty' => 'required|in:easy,medium,hard,custom',
-            'rows' => 'nullable|integer|min:5|max:50',
-            'cols' => 'nullable|integer|min:5|max:50',
-            'mines' => 'nullable|integer|min:1',
-        ]);
-
-        // Determine grid size
-        if ($request->difficulty === 'easy') {
-            $rows = 8; $cols = 8; $mines = 10;
-        } elseif ($request->difficulty === 'medium') {
-            $rows = 12; $cols = 12; $mines = 20;
-        } elseif ($request->difficulty === 'hard') {
-            $rows = 16; $cols = 16; $mines = 40;
-        } else { // custom
-            $rows = $request->rows;
-            $cols = $request->cols;
-            $mines = $request->mines;
+        // Check if a game already exists
+        $existingGame = $room->game()->latest()->first();
+        if ($existingGame) {
+            return redirect()->route('rooms.game', $room);
         }
 
-        // Generate board
-        $board = MinesweeperService::generateBoard($rows, $cols, $mines);
+        // Determine settings based on difficulty
+        $difficulty = $request->input('difficulty', 'easy');
+        $rows = 8; $cols = 8; $mines = 10;
 
-        // Create the game
-        $game = Game::create([
-            'room_id' => $room->id,
-            'difficulty' => $request->difficulty,
+        if ($difficulty === 'medium') {
+            $rows = $cols = 12; $mines = 20;
+        } elseif ($difficulty === 'hard') {
+            $rows = $cols = 16; $mines = 40;
+        } elseif ($difficulty === 'custom') {
+            $rows = (int) $request->input('rows', 10);
+            $cols = (int) $request->input('cols', 10);
+            $mines = (int) $request->input('mines', 10);
+        }
+
+        // Create the game only if it doesn’t exist
+        $game = $room->game()->create([
+            'difficulty' => $difficulty,
             'rows' => $rows,
             'cols' => $cols,
             'mines' => $mines,
-            'board' => $board,
+            'board' => json_encode(app('App\Services\MinesweeperService')->generateBoard($rows, $cols, $mines)),
             'started' => true,
         ]);
-        dd($request->all());
 
-        // Broadcast game started to all players
-        broadcast(new GameStarted($room))->toOthers();
+        // Broadcast game started
+        broadcast(new GameStarted($room, $game->id))->toOthers();
 
         return redirect()->route('rooms.game', $room);
     }
 
     public function game(Room $room)
     {
-        $game = $room->game()->firstOrFail();  // assumes room has one game
-
+        $game = $room->game()->latest()->firstOrFail();
+    
         return view('minesweeper', [
             'room' => $room,
+            'game' => $game,
             'rows' => $game->rows,
             'cols' => $game->cols,
-            'minesCount' => $game->mines,
+            'mines' => $game->mines,
             'board' => $game->board,
         ]);
     }
 
     public function roomsJson()
     {
-        $rooms = Room::with('players')->latest()->get()->map(function($room) {
+        $userId = auth()->id();
+
+        $rooms = Room::with('players')->latest()->get()->map(function($room) use ($userId) {
             return [
                 'id' => $room->id,
                 'code' => $room->code,
                 'type' => $room->type,
                 'max_players' => $room->max_players,
                 'current_players' => $room->players->count(),
+                'isInRoom' => $room->players->contains($userId),
             ];
         });
 

@@ -37,6 +37,14 @@
                 </form>
             @endif
 
+            @if($activeGame)
+                <form method="GET" action="{{ route('rooms.game', $room) }}" class="mt-4">
+                    <button type="submit" class="w-full bg-purple-500 text-white py-2 rounded hover:bg-purple-600">
+                        Join Game
+                    </button>
+                </form>
+            @endif
+
             <!-- Start button if creator -->
             @if($room->user_id === auth()->id())
                 <form method="POST" action="{{ route('rooms.start', $room) }}" class="mt-4">
@@ -60,19 +68,44 @@
                         <input type="number" name="mines" class="w-full border p-2 rounded" min="1" value="10">
                     </div>
 
-                    <button type="submit" class="w-full bg-blue-500 text-white py-2 rounded hover:bg-blue-600">
-                        Start Game
-                    </button>
+                    @if($room->user_id === auth()->id() && !$activeGame)
+                        <button type="submit" class="w-full bg-blue-500 text-white py-2 rounded hover:bg-blue-600">
+                            Start Game
+                        </button>
+                    @endif
+
                 </form>
 
                 <script>
+                    document.addEventListener("DOMContentLoaded", () => {
+                        const meta = document.getElementById("room-meta");
+                        if (!meta) return;
+
+                        const roomId = meta.dataset.roomId;
+
+                        window.Echo.channel(`room.${roomId}`)
+                            .listen(".GameStarted", (e) => {
+                                // Redirect all other players into the same game
+                                window.location.href = `/games/${e.gameId}`;
+                            });
+                    });
                     const difficultySelect = document.getElementById('difficulty');
                     const customSettings = document.getElementById('customSettings');
 
-                    difficultySelect.addEventListener('change', () => {
-                        customSettings.classList.toggle('hidden', difficultySelect.value !== 'custom');
-                    });
+                    function toggleCustom() {
+                        const isCustom = difficultySelect.value === 'custom';
+                        customSettings.classList.toggle('hidden', !isCustom);
+
+                        // Disable inputs when not custom
+                        document.querySelectorAll('#customSettings input').forEach(input => {
+                            input.disabled = !isCustom;
+                        });
+                    }
+
+                    difficultySelect.addEventListener('change', toggleCustom);
+                    toggleCustom(); // run once on page load
                 </script>
+
             @endif
 
         </div>
