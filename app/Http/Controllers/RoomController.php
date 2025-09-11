@@ -10,6 +10,8 @@ use Illuminate\Support\Str;
 use App\Events\PlayerJoined;
 use App\Events\RoomUpdated;
 use App\Events\GameStarted;
+use App\Events\GameUpdated;
+use App\Events\TileUpdated;
 use App\Services\MinesweeperService;
 
 class RoomController extends Controller
@@ -139,7 +141,7 @@ class RoomController extends Controller
             'rows' => $game->rows,
             'cols' => $game->cols,
             'mines' => $game->mines,
-            'board' => $game->board, // all players use same board
+            'board' => $game->board, // <-- SAME for everyone
         ]);
     }
 
@@ -159,4 +161,51 @@ class RoomController extends Controller
 
         return redirect()->route('welcome')->with('success', 'You left the room.');
     }
+
+    public function roomsJson()
+    {
+        $userId = auth()->id();
+
+        $rooms = Room::with('players')->get()->map(function ($room) use ($userId) {
+            return [
+                'id' => $room->id,
+                'code' => $room->code,
+                'type' => $room->type,
+                'max_players' => $room->max_players,
+                'current_players' => $room->players->count(),
+                'isInRoom' => $room->players->contains($userId),
+            ];
+        });
+
+        return response()->json($rooms);
+    }
+
+    public function updateGame(Request $request)
+    {
+        broadcast(new GameUpdated(
+            $request->roomId,
+            $request->row,
+            $request->col,
+            $request->action,
+            $request->value
+        ))->toOthers();
+
+        return response()->json(['status' => 'ok']);
+    }
+
+    
+    public function update(Request $request)
+    {
+        $roomId = $request->input('roomId');
+        $row = $request->input('row');
+        $col = $request->input('col');
+        $action = $request->input('action');
+        $value = $request->input('value');
+
+        // Broadcast to all other players
+        broadcast(new TileUpdated($roomId, $row, $col, $action, $value))->toOthers();
+
+        return response()->json(['status' => 'ok']);
+    }
+
 }

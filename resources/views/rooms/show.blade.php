@@ -90,9 +90,9 @@
 
             // Listen for GameStarted event
             window.Echo.channel(`room.${roomId}`)
-                .listen(".GameStarted", (e) => {
-                    window.location.href = `/games/${e.gameId}`;
-                });
+            .listen(".GameStarted", (e) => {
+                window.location.href = `/rooms/${roomId}/game`;
+            });
 
             const difficultySelect = document.getElementById('difficulty');
             const customSettings = document.getElementById('customSettings');

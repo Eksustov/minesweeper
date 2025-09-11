@@ -11,7 +11,7 @@
 
             <!-- Mine counter and status -->
             <div class="flex justify-between items-center mb-4">
-                <div id="mineCounter" class="text-lg font-bold text-gray-700">Mines: 10</div>
+                <div id="mineCounter" class="text-lg font-bold text-gray-700">Mines: 0</div>
                 <div id="statusMessage" class="text-lg font-bold text-green-600"></div>
             </div>
 
@@ -28,72 +28,54 @@
     </div>
 
     <script>
+        axios.defaults.headers.common['X-CSRF-TOKEN'] = document.querySelector('meta[name="csrf-token"]').content;
         const rows = {{ $rows }};
         const cols = {{ $cols }};
-        const minesCount = {{ $mines }};
+        const mines = {{ $mines }};
+        const initialBoard = @json(json_decode($board));
+
         let board = [];
         let gameOver = false;
         let flagsPlaced = 0;
 
         const mineCounter = document.getElementById('mineCounter');
         const statusMessage = document.getElementById('statusMessage');
+        const gameContainer = document.getElementById('game');
+        const restartBtn = document.getElementById('restartBtn');
 
         function initGame() {
-            const game = document.getElementById('game');
-            game.style.gridTemplateColumns = `repeat(${cols}, 3rem)`;
-            game.innerHTML = '';
-            board = [];
-            gameOver = false;
+            gameContainer.style.gridTemplateColumns = `repeat(${cols}, 3rem)`;
+            gameContainer.innerHTML = '';
+
+            board = initialBoard.map(row =>
+                row.map(cell => ({
+                    ...cell,
+                    element: null,
+                    revealed: false,
+                    flagged: false
+                }))
+            );
+
             flagsPlaced = 0;
+            gameOver = false;
             statusMessage.textContent = '';
-            mineCounter.textContent = `Mines: ${minesCount}`;
+            mineCounter.textContent = `Mines: ${mines}`;
 
-            // Initialize board
             for (let r = 0; r < rows; r++) {
-                board[r] = [];
                 for (let c = 0; c < cols; c++) {
-                    const cell = document.createElement('button');
-                    cell.className = 'w-12 h-12 bg-gray-300 rounded flex items-center justify-center text-sm font-bold';
-                    cell.dataset.row = r;
-                    cell.dataset.col = c;
+                    const cellBtn = document.createElement('button');
+                    cellBtn.className = 'w-12 h-12 bg-gray-300 rounded flex items-center justify-center text-sm font-bold';
+                    cellBtn.dataset.row = r;
+                    cellBtn.dataset.col = c;
 
-                    // Left click = reveal
-                    cell.addEventListener('click', () => reveal(r, c));
-
-                    // Right click = toggle flag
-                    cell.addEventListener('contextmenu', (e) => {
+                    cellBtn.addEventListener('click', () => reveal(r, c));
+                    cellBtn.addEventListener('contextmenu', (e) => {
                         e.preventDefault();
                         toggleFlag(r, c);
                     });
 
-                    game.appendChild(cell);
-
-                    board[r][c] = { element: cell, mine: false, revealed: false, flagged: false, count: 0 };
-                }
-            }
-
-            // Place mines randomly
-            let placed = 0;
-            while (placed < minesCount) {
-                const r = Math.floor(Math.random() * rows);
-                const c = Math.floor(Math.random() * cols);
-                if (!board[r][c].mine) {
-                    board[r][c].mine = true;
-                    placed++;
-                }
-            }
-
-            // Count adjacent mines
-            for (let r = 0; r < rows; r++) {
-                for (let c = 0; c < cols; c++) {
-                    if (board[r][c].mine) continue;
-                    let count = 0;
-                    for (let dr = -1; dr <= 1; dr++) {
-                        for (let dc = -1; dc <= 1; dc++) {
-                            if (board[r+dr]?.[c+dc]?.mine) count++;
-                        }
-                    }
-                    board[r][c].count = count;
+                    gameContainer.appendChild(cellBtn);
+                    board[r][c].element = cellBtn;
                 }
             }
         }
@@ -101,28 +83,34 @@
         function toggleFlag(r, c) {
             if (gameOver) return;
             const cell = board[r][c];
-            if (cell.revealed) return;
+            if (!cell || cell.revealed) return;
 
             cell.flagged = !cell.flagged;
-            if (cell.flagged) {
-                cell.element.textContent = '🚩';
-                cell.element.className = 'w-12 h-12 bg-yellow-300 rounded flex items-center justify-center text-sm font-bold';
-                flagsPlaced++;
-            } else {
-                cell.element.textContent = '';
-                cell.element.className = 'w-12 h-12 bg-gray-300 rounded flex items-center justify-center text-sm font-bold';
-                flagsPlaced--;
-            }
+            cell.element.textContent = cell.flagged ? '🚩' : '';
+            cell.element.className = cell.flagged 
+                ? 'w-12 h-12 bg-yellow-300 rounded flex items-center justify-center text-sm font-bold'
+                : 'w-12 h-12 bg-gray-300 rounded flex items-center justify-center text-sm font-bold';
 
-            mineCounter.textContent = `Mines: ${minesCount - flagsPlaced}`;
+            flagsPlaced += cell.flagged ? 1 : -1;
+            mineCounter.textContent = `Mines: ${mines - flagsPlaced}`;
+
+            // Send flag update to server for synchronization
+            window.axios.post('/games/update', {
+                roomId: {{ $room->id }},
+                row: r,
+                col: c,
+                action: 'flag',
+                value: cell.flagged
+            });
+
             checkWin();
         }
 
         function reveal(r, c) {
             if (gameOver) return;
-
             const cell = board[r][c];
-            if (cell.revealed || cell.flagged) return;
+            if (!cell || cell.revealed || cell.flagged) return;
+
             cell.revealed = true;
 
             if (cell.mine) {
@@ -130,17 +118,25 @@
                 cell.element.textContent = '💣';
                 gameOver = true;
 
-                // Reveal all other mines
-                for (let i = 0; i < rows; i++) {
-                    for (let j = 0; j < cols; j++) {
-                        if (board[i][j].mine && !board[i][j].revealed) {
-                            board[i][j].element.className = 'w-12 h-12 bg-red-500 rounded flex items-center justify-center text-sm font-bold text-white';
-                            board[i][j].element.textContent = '💣';
-                            board[i][j].revealed = true;
-                        }
+                // Reveal all mines
+                board.forEach(row => row.forEach(c => {
+                    if (c.mine && !c.revealed) {
+                        c.element.className = 'w-12 h-12 bg-red-500 rounded flex items-center justify-center text-sm font-bold text-white';
+                        c.element.textContent = '💣';
+                        c.revealed = true;
                     }
-                }
+                }));
+
                 statusMessage.textContent = 'Game Over!';
+
+                // Send reveal to server
+                window.axios.post('/games/update', {
+                    roomId: {{ $room->id }},
+                    row: r,
+                    col: c,
+                    action: 'reveal',
+                    value: { mine: cell.mine, count: cell.count }
+                });
                 return;
             }
 
@@ -148,12 +144,10 @@
             if (cell.count > 0) {
                 cell.element.textContent = cell.count;
             } else {
-                // Auto-reveal neighbors
+                // Flood reveal neighbors
                 for (let dr = -1; dr <= 1; dr++) {
                     for (let dc = -1; dc <= 1; dc++) {
-                        if (board[r+dr]?.[c+dc]) {
-                            reveal(r+dr, c+dc);
-                        }
+                        if (board[r + dr]?.[c + dc]) reveal(r + dr, c + dc);
                     }
                 }
             }
@@ -164,29 +158,50 @@
         function checkWin() {
             if (gameOver) return;
 
-            let safeCells = 0;
-            for (let r = 0; r < rows; r++) {
-                for (let c = 0; c < cols; c++) {
-                    if (!board[r][c].mine && board[r][c].revealed) safeCells++;
-                }
-            }
-
-            if (safeCells === rows*cols - minesCount) {
+            const safeCells = board.flat().filter(c => !c.mine && c.revealed).length;
+            if (safeCells === rows * cols - mines) {
                 gameOver = true;
                 statusMessage.textContent = 'You Win! 🎉';
-                // Reveal all mines visually
-                for (let r = 0; r < rows; r++) {
-                    for (let c = 0; c < cols; c++) {
-                        if (board[r][c].mine) {
-                            board[r][c].element.className = 'w-12 h-12 bg-green-500 rounded flex items-center justify-center text-sm font-bold text-white';
-                            board[r][c].element.textContent = '💣';
-                        }
+                board.flat().forEach(c => {
+                    if (c.mine) {
+                        c.element.className = 'w-12 h-12 bg-green-500 rounded flex items-center justify-center text-sm font-bold text-white';
+                        c.element.textContent = '💣';
                     }
-                }
+                });
             }
         }
 
+        const roomMeta = document.getElementById('room-meta');
+        if (roomMeta) {
+            const roomId = roomMeta.dataset.roomId;
+
+            window.Echo.channel(`room.${roomId}`)
+                .listen('.TileUpdated', (e) => {
+                    const cell = board[e.row][e.col];
+                    if (!cell) return;
+
+                    if (e.action === 'flag') {
+                        cell.flagged = e.value;
+                        cell.element.textContent = e.value ? '🚩' : '';
+                        cell.element.className = e.value 
+                            ? 'w-12 h-12 bg-yellow-300 rounded flex items-center justify-center text-sm font-bold'
+                            : 'w-12 h-12 bg-gray-300 rounded flex items-center justify-center text-sm font-bold';
+                    } else if (e.action === 'reveal') {
+                        cell.revealed = true;
+                        if (e.value.mine) {
+                            cell.element.textContent = '💣';
+                            cell.element.className = 'w-12 h-12 bg-red-500 rounded flex items-center justify-center text-sm font-bold text-white';
+                        } else {
+                            cell.element.textContent = e.value.count > 0 ? e.value.count : '';
+                            cell.element.className = 'w-12 h-12 bg-gray-100 rounded flex items-center justify-center text-sm font-bold text-gray-800';
+                        }
+                    }
+                });
+        }
+
+
         window.addEventListener('DOMContentLoaded', initGame);
-        document.getElementById('restartBtn').addEventListener('click', initGame);
+        restartBtn.addEventListener('click', initGame);
     </script>
+
 </x-app-layout>
