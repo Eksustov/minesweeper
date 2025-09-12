@@ -43,7 +43,15 @@ class RoomController extends Controller
             'max_players' => $request->max_players,
         ]);
 
-        $room->players()->attach($user->id);
+        // Predefined list of colors
+        $colors = [
+            '#FF5733', '#33FF57', '#3357FF', '#F1C40F',
+            '#9B59B6', '#E67E22', '#1ABC9C', '#E74C3C',
+        ];
+
+        // Assign first color to creator
+        $creatorColor = $colors[0];
+        $room->players()->attach($user->id, ['color' => $creatorColor]);
 
         $room->load('players');
         broadcast(new RoomUpdated($room))->toOthers();
@@ -223,12 +231,19 @@ class RoomController extends Controller
         $value = $request->input('value');
         $gameOver = $request->input('gameOver', false);
 
-        // For flag updates we broadcast row/col; for reveal (bulk) we broadcast value array.
+        // Get player color for flags
+        $playerColor = null;
         if ($action === 'flag') {
-            broadcast(new TileUpdated($roomId, $row, $col, $action, $value, $gameOver))->toOthers();
-        } else { // reveal (value is an array of revealed cells OR mines array)
-            broadcast(new TileUpdated($roomId, null, null, $action, $value, $gameOver))->toOthers();
+            $player = Room::find($roomId)
+                ->players()
+                ->where('user_id', auth()->id())
+                ->first();
+
+            $playerColor = $player?->pivot->color ?? '#000000';
         }
+
+        // Broadcast updates
+        broadcast(new TileUpdated($roomId, $row, $col, $action, $value, $gameOver, $playerColor))->toOthers();
 
         return response()->json(['status' => 'ok']);
     }

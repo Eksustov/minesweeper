@@ -248,10 +248,14 @@
                         if (e.action === 'flag') {
                             const cell = board[e.row]?.[e.col];
                             if (!cell) return;
+                            if (gameOver) return;
+
                             cell.flagged = e.value;
                             cell.element.textContent = e.value ? '🚩' : '';
-                            cell.element.style.backgroundColor = e.value ? e.color : '#d1d5db'; // use broadcasted color
-                        } 
+
+                            // Use the player's color for the flag
+                            cell.element.style.backgroundColor = e.value ? e.playerColor : '#d1d5db';
+                        }
                         else if (e.action === 'reveal') {
                             (e.value || []).forEach(({ row, col, mine, count }) => {
                                 const cell = board[row]?.[col];
