@@ -28,6 +28,8 @@ class Room extends Model
 
     public function players()
     {
-        return $this->belongsToMany(User::class, 'room_user');
+        return $this->belongsToMany(User::class, 'room_user')
+                    ->withPivot('color')
+                    ->withTimestamps(); // optional if your pivot has timestamps
     }
 }

@@ -16,15 +16,20 @@ class TileUpdated implements ShouldBroadcast
     public $row;
     public $col;
     public $action; // "reveal" or "flag"
-    public $value;  // true/false for flag or {mine,count} for reveal
+    public $value;  // true/false for flag or array of cells for reveal
+    public $gameOver; // boolean
 
-    public function __construct($roomId, $row, $col, $action, $value)
+    /**
+     * @param mixed $row/$col can be null for bulk reveals
+     */
+    public function __construct($roomId, $row = null, $col = null, $action = null, $value = null, $gameOver = false)
     {
         $this->roomId = $roomId;
         $this->row = $row;
         $this->col = $col;
         $this->action = $action;
         $this->value = $value;
+        $this->gameOver = (bool) $gameOver;
     }
 
     public function broadcastOn()
