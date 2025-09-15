@@ -14,9 +14,21 @@
 
             <h4 class="mt-4 font-semibold">Players in this room:</h4>
             <ul id="playersList" class="list-disc list-inside">
-                @foreach($room->players as $player)
-                    <li>{{ $player->name }}</li>
-                @endforeach
+            @foreach ($room->players as $player)
+                <li class="flex items-center space-x-2 mb-1">
+                    <span class="inline-block w-4 h-4 rounded" style="background-color: {{ $player->pivot->color }}"></span>
+                    <span>{{ $player->name }}</span>
+
+                    @if ($room->user_id === auth()->id() && $player->id !== auth()->id())
+                        <button
+                            class="ml-auto px-2 py-1 bg-red-500 text-white rounded text-sm hover:bg-red-600"
+                            onclick="kickPlayer({{ $player->id }})"
+                        >
+                            Kick
+                        </button>
+                    @endif
+                </li>
+            @endforeach
             </ul>
 
             <!-- Join room button if not in room -->
@@ -110,5 +122,31 @@
                 toggleCustom();
             }
         });
+
+        function kickPlayer(playerId) {
+                if (!confirm("Are you sure you want to kick this player?")) return;
+
+                axios.post('/rooms/{{ $room->id }}/kick', { user_id: playerId })
+                    .then(res => {
+                        console.log(res.data.message);
+                    })
+                    .catch(err => {
+                        alert(err.response?.data?.message || 'Failed to kick player');
+                    });
+            }
+
+            if (window.Echo && roomId) {
+                window.Echo.channel(`room.${roomId}`)
+                    .listen('.PlayerKicked', e => {
+                        if (e.playerId === {{ auth()->id() }}) {
+                            alert("You have been kicked from the room!");
+                            window.location.href = "{{ route('welcome') }}";
+                        } else {
+                            // Optional: remove player from DOM if someone else was kicked
+                            const li = document.querySelector(`#player-${e.playerId}`);
+                            if (li) li.remove();
+                        }
+                    });
+            }
     </script>
 </x-app-layout>

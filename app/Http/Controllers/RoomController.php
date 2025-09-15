@@ -169,7 +169,9 @@ class RoomController extends Controller
             'rows' => $game->rows,
             'cols' => $game->cols,
             'mines' => $game->mines,
-            'board' => $game->board, // <-- SAME for everyone
+            'board' => $game->board, 
+            'revealed' => $game->revealed ? json_decode($game->revealed, true) : [],
+            'flags' => $game->flags ? json_decode($game->flags, true) : [],
         ]);
     }
 
@@ -229,23 +231,93 @@ class RoomController extends Controller
         $col = $request->input('col');
         $action = $request->input('action');
         $value = $request->input('value');
-        $gameOver = $request->input('gameOver', false);
+        $gameOver = (bool) $request->input('gameOver', false);
 
-        // Get player color for flags
-        $playerColor = null;
+        // find room + active game
+        $room = Room::findOrFail($roomId);
+        $game = $room->game()
+            ->where('started', true)
+            ->latest()
+            ->firstOrFail();
+
+        // figure out player's color (if they are in the room)
+        $player = $room->players()->where('user_id', auth()->id())->first();
+        $playerColor = $player?->pivot->color ?? null;
+
+        // FLAGS: store color (or remove) instead of storing boolean only
         if ($action === 'flag') {
-            $player = Room::find($roomId)
-                ->players()
-                ->where('user_id', auth()->id())
-                ->first();
+            $flags = $game->flags ? json_decode($game->flags, true) : [];
 
-            $playerColor = $player?->pivot->color ?? '#000000';
+            $key = "{$row}-{$col}";
+
+            if ($value) {
+                // place flag -> save player's color string so it can be restored
+                $flags[$key] = $playerColor;
+            } else {
+                // remove flag
+                if (isset($flags[$key])) {
+                    unset($flags[$key]);
+                }
+            }
+
+            $game->flags = json_encode($flags);
         }
 
-        // Broadcast updates
-        broadcast(new TileUpdated($roomId, $row, $col, $action, $value, $gameOver, $playerColor))->toOthers();
+        // REVEALS: value is expected to be an array of { row, col, mine, count } entries
+        if ($action === 'reveal') {
+            $revealed = $game->revealed ? json_decode($game->revealed, true) : [];
+
+            foreach ($value as $cell) {
+                $revealed[$cell['row'] . '-' . $cell['col']] = true;
+            }
+
+            $game->revealed = json_encode($revealed);
+        }
+
+        // If game over (someone hit a mine), mark started=false so the game is finished
+        if ($gameOver) {
+            $game->started = false;
+        }
+
+        $game->save();
+
+        // Broadcast. For flags include playerColor; for reveal send value array.
+        if ($action === 'flag') {
+            broadcast(new TileUpdated($roomId, $row, $col, $action, $value, $gameOver, $playerColor))->toOthers();
+        } else { // reveal
+            broadcast(new TileUpdated($roomId, null, null, $action, $value, $gameOver, null))->toOthers();
+        }
 
         return response()->json(['status' => 'ok']);
+    }
+
+    public function kick(Request $request, Room $room)
+    {
+        $user = auth()->user();
+        $targetUserId = $request->input('user_id');
+
+        // Only creator can kick
+        if ($room->user_id !== $user->id) {
+            return response()->json(['status' => 'error', 'message' => 'Only the room creator can kick players.'], 403);
+        }
+
+        // Prevent kicking yourself
+        if ($targetUserId == $user->id) {
+            return response()->json(['status' => 'error', 'message' => 'You cannot kick yourself.'], 400);
+        }
+
+        // Check if the player is in the room
+        if (!$room->players->contains($targetUserId)) {
+            return response()->json(['status' => 'error', 'message' => 'Player not found in this room.'], 404);
+        }
+
+        // Remove the player
+        $room->players()->detach($targetUserId);
+
+        // Broadcast to the room that a player was kicked
+        broadcast(new \App\Events\PlayerKicked($room->id, $targetUserId))->toOthers();
+
+        return response()->json(['status' => 'ok', 'message' => 'Player kicked successfully.']);
     }
 
 }

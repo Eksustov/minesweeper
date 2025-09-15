@@ -57,239 +57,295 @@
     <div id="room-meta" data-room-id="{{ $room->id }}"></div>
 
     <script>
-        const playerColor = "{{ $room->players->find(auth()->id())->pivot->color }}";
-        window.addEventListener('DOMContentLoaded', () => {
-            const mineCounter = document.getElementById('mineCounter');
-            const statusMessage = document.getElementById('statusMessage');
-            const gameContainer = document.getElementById('game');
-            const restartBtn = document.getElementById('restartBtn');
-            const roomMeta = document.getElementById('room-meta');
-            const roomId = roomMeta?.dataset.roomId;
+        const playerColor = "{{ $room->players->find(auth()->id())?->pivot->color ?? '#000000' }}";
+        const rows = {{ $rows }};
+        const cols = {{ $cols }};
+        const mines = {{ $mines }};
+        const initialBoard = @json(json_decode($board)); // array of { mine: bool, count: int }
+        const savedFlags = @json($flags);     // map "r-c" => color (string) or absent
+        const savedRevealed = @json($revealed); // map "r-c" => true
+        const roomId = {{ $room->id }};
+        const updateUrl = "{{ route('games.update') }}";
 
-            axios.defaults.headers.common['X-CSRF-TOKEN'] = document.querySelector('meta[name="csrf-token"]').content;
+        axios.defaults.headers.common['X-CSRF-TOKEN'] = document.querySelector('meta[name="csrf-token"]').content;
 
-            const rows = {{ $rows }};
-            const cols = {{ $cols }};
-            const mines = {{ $mines }};
-            const initialBoard = @json(json_decode($board));
+        // DOM refs
+        const gameContainer = document.getElementById('game');
+        const mineCounter = document.getElementById('mineCounter');
+        const statusMessage = document.getElementById('statusMessage');
+        const restartBtn = document.getElementById('restartBtn');
 
-            let board = [];
-            let gameOver = false;
-            let flagsPlaced = 0;
+        let board = []; // board[r][c] => { mine, count, row, col, element, revealed, flagged, flagColor }
+        let flagsPlaced = 0;
+        let gameOver = false;
 
-            function initGame() {
-                gameContainer.style.gridTemplateColumns = `repeat(${cols}, 3rem)`;
-                gameContainer.innerHTML = '';
+        function initGame() {
+            gameContainer.style.gridTemplateColumns = `repeat(${cols}, 3rem)`;
+            gameContainer.innerHTML = '';
+            board = [];
+            flagsPlaced = 0;
+            gameOver = false;
+            statusMessage.textContent = '';
 
-                board = initialBoard.map((row, r) =>
-                    row.map((cell, c) => ({
-                        ...cell,
+            // build board objects
+            for (let r = 0; r < rows; r++) {
+                board[r] = [];
+                for (let c = 0; c < cols; c++) {
+                    const sourceCell = initialBoard[r][c] ?? { mine: false, count: 0 };
+                    board[r][c] = {
+                        mine: sourceCell.mine,
+                        count: sourceCell.count,
                         row: r,
                         col: c,
                         element: null,
                         revealed: false,
-                        flagged: false
-                    }))
-                );
+                        flagged: false,
+                        flagColor: null
+                    };
+                }
+            }
 
-                flagsPlaced = 0;
-                gameOver = false;
-                statusMessage.textContent = '';
-                mineCounter.textContent = `Mines: ${mines}`;
+            // create DOM buttons then restore saved state
+            for (let r = 0; r < rows; r++) {
+                for (let c = 0; c < cols; c++) {
+                    const btn = document.createElement('button');
+                    btn.className = 'w-12 h-12 bg-gray-300 rounded flex items-center justify-center text-sm font-bold';
+                    btn.dataset.row = r;
+                    btn.dataset.col = c;
 
-                for (let r = 0; r < rows; r++) {
-                    for (let c = 0; c < cols; c++) {
-                        const cellBtn = document.createElement('button');
-                        cellBtn.className = 'w-12 h-12 bg-gray-300 rounded flex items-center justify-center text-sm font-bold';
-                        cellBtn.dataset.row = r;
-                        cellBtn.dataset.col = c;
+                    btn.addEventListener('click', () => reveal(r, c));
+                    btn.addEventListener('contextmenu', (e) => {
+                        e.preventDefault();
+                        toggleFlag(r, c);
+                    });
 
-                        cellBtn.addEventListener('click', () => reveal(r, c));
-                        cellBtn.addEventListener('contextmenu', (e) => {
-                            e.preventDefault();
-                            toggleFlag(r, c);
-                        });
+                    gameContainer.appendChild(btn);
+                    board[r][c].element = btn;
 
-                        gameContainer.appendChild(cellBtn);
-                        board[r][c].element = cellBtn;
+                    // restore flag if present in savedFlags (value is color string)
+                    const key = `${r}-${c}`;
+                    if (savedFlags && savedFlags[key]) {
+                        board[r][c].flagged = true;
+                        board[r][c].flagColor = savedFlags[key];
+                        flagsPlaced++;
+                        btn.textContent = '🚩';
+                        btn.style.backgroundColor = board[r][c].flagColor;
+                    }
+
+                    // restore revealed if present
+                    if (savedRevealed && savedRevealed[key]) {
+                        revealCell(r, c, true); // true = restoring (don't broadcast)
                     }
                 }
             }
 
-            function toggleFlag(r, c) {
-                if (gameOver) return;
-                const cell = board[r][c];
-                if (!cell || cell.revealed) return;
+            updateMineCounter();
 
-                cell.flagged = !cell.flagged;
-                cell.element.textContent = cell.flagged ? '🚩' : '';
-                cell.element.style.backgroundColor = cell.flagged ? playerColor : '#d1d5db'; // use player color
+            // If the game was already finished server-side (started=false) you might want to set gameOver true; 
+            // that requires the controller to pass that info — optional.
+        }
 
-                flagsPlaced += cell.flagged ? 1 : -1;
-                mineCounter.textContent = `Mines: ${mines - flagsPlaced}`;
+        function updateMineCounter() {
+            mineCounter.textContent = `Mines: ${mines - flagsPlaced}`;
+        }
 
-                // Send flag update to server for synchronization
-                axios.post('/games/update', {
-                    roomId: roomId,
-                    row: r,
-                    col: c,
-                    action: 'flag',
-                    value: cell.flagged,
-                    color: playerColor // send color to server
-                }).catch(err => console.error('flag update failed', err));
+        function toggleFlag(r, c) {
+            if (gameOver) return;
+            const cell = board[r][c];
+            if (!cell || cell.revealed) return;
+
+            cell.flagged = !cell.flagged;
+            if (cell.flagged) {
+                flagsPlaced++;
+                cell.flagColor = playerColor;
+                cell.element.textContent = '🚩';
+                cell.element.style.backgroundColor = cell.flagColor;
+            } else {
+                flagsPlaced--;
+                cell.flagColor = null;
+                cell.element.textContent = '';
+                cell.element.style.backgroundColor = ''; // reset (Tailwind gray will be applied by class)
             }
 
-            function reveal(r, c) {
-                if (gameOver) return;
-                const toReveal = floodReveal(r, c);
-                if (!toReveal.length) return;
+            updateMineCounter();
 
-                // Apply locally
-                toReveal.forEach(({ row, col, mine, count }) => {
-                    const cell = board[row][col];
-                    if (!cell || cell.revealed) return;
-                    cell.revealed = true;
-                    if (mine) {
-                        cell.element.textContent = '💣';
-                        cell.element.className = 'w-12 h-12 bg-red-500 rounded flex items-center justify-center text-sm font-bold text-white';
-                    } else {
-                        cell.element.textContent = count > 0 ? count : '';
-                        cell.element.className = 'w-12 h-12 bg-gray-100 rounded flex items-center justify-center text-sm font-bold text-gray-800';
+            // send flag toggle to server. server decides playerColor and persists it.
+            axios.post(updateUrl, {
+                roomId: roomId,
+                row: r,
+                col: c,
+                action: 'flag',
+                value: cell.flagged
+            }).catch(err => console.error('flag update failed', err));
+        }
+
+        function reveal(r, c) {
+            if (gameOver) return;
+            const toReveal = floodRevealCollect(r, c);
+            if (!toReveal.length) return;
+
+            // reveal locally
+            toReveal.forEach(({ row, col }) => revealCell(row, col));
+
+            // if any mine in this reveal -> game over for everyone
+            if (toReveal.some(x => board[x.row][x.col].mine)) {
+                gameOver = true;
+                statusMessage.textContent = 'Game Over!';
+                // reveal all mines locally
+                board.flat().forEach(cell => {
+                    if (cell.mine && !cell.revealed) {
+                        revealCell(cell.row, cell.col);
                     }
+                    if (cell.element) cell.element.disabled = true;
                 });
 
-                // If any mine revealed -> game over for everyone (send mines only + gameOver flag)
-                if (toReveal.some(c => c.mine)) {
-                    gameOver = true;
-                    statusMessage.textContent = 'Game Over!';
+                // prepare mines array to send
+                const minesToSend = board.flat()
+                    .filter(c => c.mine)
+                    .map(c => ({ row: c.row, col: c.col, mine: true }));
 
-                    // Reveal all mines locally
-                    board.flat().forEach(c => {
-                        if (c.mine && !c.revealed) {
-                            c.element.textContent = '💣';
-                            c.element.className = 'w-12 h-12 bg-red-500 rounded flex items-center justify-center text-sm font-bold text-white';
-                            c.revealed = true;
-                        }
-                        // disable clicking
-                        if (c.element) c.element.disabled = true;
-                    });
-
-                    const minesToSend = board.flat()
-                        .filter(c => c.mine)
-                        .map(c => ({ row: c.row, col: c.col, mine: true }));
-
-                    axios.post('/games/update', {
-                        roomId: roomId,
-                        action: 'reveal',
-                        value: minesToSend,
-                        gameOver: true
-                    }).catch(err => console.error('reveal-mine update failed', err));
-
-                    return;
-                }
-
-                // Otherwise send just the revealed safe cells (bulk)
-                axios.post('/games/update', {
+                axios.post(updateUrl, {
                     roomId: roomId,
                     action: 'reveal',
-                    value: toReveal
-                }).catch(err => console.error('reveal update failed', err));
+                    value: minesToSend,
+                    gameOver: true
+                }).catch(err => console.error('reveal (mines) update failed', err));
 
-                checkWin();
+                return;
             }
 
-            function floodReveal(r, c) {
-                const queue = [];
-                const revealed = [];
-                const visited = Array.from({ length: rows }, () => Array(cols).fill(false));
-                queue.push({ r, c });
+            // safe reveal(s) -> send batch
+            axios.post(updateUrl, {
+                roomId: roomId,
+                action: 'reveal',
+                value: toReveal
+            }).catch(err => console.error('reveal update failed', err));
 
-                while (queue.length) {
-                    const { r: row, c: col } = queue.shift();
-                    if (!board[row] || !board[row][col]) continue;
-                    const cell = board[row][col];
-                    if (visited[row][col] || cell.revealed || cell.flagged) continue;
+            checkWin();
+        }
 
-                    visited[row][col] = true;
-                    revealed.push({ row, col, mine: cell.mine, count: cell.count });
+        // collects cells to reveal with flood fill (no side effects)
+        function floodRevealCollect(sr, sc) {
+            const queue = [{ r: sr, c: sc }];
+            const revealed = [];
+            const visited = Array.from({ length: rows }, () => Array(cols).fill(false));
 
-                    if (cell.count === 0 && !cell.mine) {
-                        for (let dr = -1; dr <= 1; dr++) {
-                            for (let dc = -1; dc <= 1; dc++) {
-                                const nr = row + dr, nc = col + dc;
-                                if (board[nr]?.[nc] && !visited[nr][nc]) queue.push({ r: nr, c: nc });
+            while (queue.length) {
+                const { r, c } = queue.shift();
+                if (r < 0 || c < 0 || r >= rows || c >= cols) continue;
+                const cell = board[r][c];
+                if (!cell || visited[r][c] || cell.revealed || cell.flagged) continue;
+
+                visited[r][c] = true;
+                revealed.push({ row: r, col: c, mine: cell.mine, count: cell.count });
+
+                // flood neighbors only if count is 0 and not a mine
+                if (cell.count === 0 && !cell.mine) {
+                    for (let dr = -1; dr <= 1; dr++) {
+                        for (let dc = -1; dc <= 1; dc++) {
+                            const nr = r + dr, nc = c + dc;
+                            if (nr >= 0 && nc >= 0 && nr < rows && nc < cols && !visited[nr][nc]) {
+                                queue.push({ r: nr, c: nc });
                             }
                         }
                     }
                 }
-
-                return revealed;
             }
 
-            function checkWin() {
-                if (gameOver) return;
-                const safeCells = board.flat().filter(c => !c.mine && c.revealed).length;
-                if (safeCells === rows * cols - mines) {
-                    gameOver = true;
-                    statusMessage.textContent = 'You Win! 🎉';
-                    board.flat().forEach(c => {
-                        if (c.mine) {
-                            c.element.className = 'w-12 h-12 bg-green-500 rounded flex items-center justify-center text-sm font-bold text-white';
-                            c.element.textContent = '💣';
-                        }
-                        if (c.element) c.element.disabled = true;
-                    });
+            return revealed;
+        }
+
+        function revealCell(r, c, restoring = false) {
+            const cell = board[r][c];
+            if (!cell || cell.revealed) return;
+            cell.revealed = true;
+
+            const btn = cell.element;
+            if (cell.mine) {
+                btn.textContent = '💣';
+                btn.className = 'w-12 h-12 bg-red-500 rounded flex items-center justify-center text-sm font-bold text-white';
+                if (!restoring) {
+                    // optional: can set gameOver here if called directly, but main reveal() handles gameOver logic
                 }
+            } else {
+                btn.textContent = cell.count > 0 ? cell.count : '';
+                btn.className = 'w-12 h-12 bg-gray-100 rounded flex items-center justify-center text-sm font-bold text-gray-800';
             }
+        }
 
-            // Listen for live updates (safely check Echo)
-            if (window.Echo && roomId) {
-                window.Echo.channel(`room.${roomId}`)
-                    .listen('.TileUpdated', (e) => {
-                        if (e.action === 'flag') {
-                            const cell = board[e.row]?.[e.col];
-                            if (!cell) return;
-                            if (gameOver) return;
-
-                            cell.flagged = e.value;
-                            cell.element.textContent = e.value ? '🚩' : '';
-
-                            // Use the player's color for the flag
-                            cell.element.style.backgroundColor = e.value ? e.playerColor : '#d1d5db';
-                        }
-                        else if (e.action === 'reveal') {
-                            (e.value || []).forEach(({ row, col, mine, count }) => {
-                                const cell = board[row]?.[col];
-                                if (!cell || cell.revealed) return;
-                                cell.revealed = true;
-                                if (mine) {
-                                    cell.element.textContent = '💣';
-                                    cell.element.className = 'w-12 h-12 bg-red-500 rounded flex items-center justify-center text-sm font-bold text-white';
-                                } else {
-                                    cell.element.textContent = count > 0 ? count : '';
-                                    cell.element.className = 'w-12 h-12 bg-gray-100 rounded flex items-center justify-center text-sm font-bold text-gray-800';
-                                }
-                            });
-
-                            if (e.gameOver) {
-                                gameOver = true;
-                                statusMessage.textContent = 'Game Over!';
-                                board.flat().forEach(c => { if(c.element) c.element.disabled = true; });
-                            }
-                        }
-                    });
+        function checkWin() {
+            if (gameOver) return;
+            const safeCells = board.flat().filter(c => !c.mine && c.revealed).length;
+            if (safeCells === rows * cols - mines) {
+                gameOver = true;
+                statusMessage.textContent = 'You Win! 🎉';
+                board.flat().forEach(c => {
+                    if (c.mine) {
+                        c.element.className = 'w-12 h-12 bg-green-500 rounded flex items-center justify-center text-sm font-bold text-white';
+                        c.element.textContent = '💣';
+                    }
+                    if (c.element) c.element.disabled = true;
+                });
             }
+        }
 
-            // initial render
+        // Listen for TileUpdated broadcasts and apply them
+        if (window.Echo && roomId) {
+            window.Echo.channel(`room.${roomId}`)
+                .listen('.TileUpdated', (e) => {
+                    console.log('TileUpdated', e);
+
+                    if (e.action === 'flag') {
+                        const r = e.row, c = e.col;
+                        const cell = board[r]?.[c];
+                        if (!cell) return;
+                        if (gameOver) return; // ignore flags after game end locally
+                        // server sends value = true/false, and playerColor (string) for who flagged
+                        cell.flagged = !!e.value;
+                        if (cell.flagged) {
+                            cell.flagColor = e.playerColor ?? '#000';
+                            cell.element.textContent = '🚩';
+                            cell.element.style.backgroundColor = cell.flagColor;
+                        } else {
+                            cell.flagColor = null;
+                            cell.element.textContent = '';
+                            cell.element.style.backgroundColor = '';
+                        }
+
+                        // update local flagsPlaced count (recount robustly)
+                        flagsPlaced = board.flat().filter(x => x.flagged).length;
+                        updateMineCounter();
+                    }
+
+                    if (e.action === 'reveal') {
+                        // e.value is an array of {row,col,mine,count}
+                        (e.value || []).forEach(({ row, col, mine, count }) => {
+                            // apply reveal only if not already revealed
+                            const cell = board[row]?.[col];
+                            if (!cell || cell.revealed) return;
+                            // ensure the cell has count/mine from payload if provided
+                            if (typeof mine !== 'undefined') cell.mine = !!mine;
+                            if (typeof count !== 'undefined') cell.count = count;
+                            revealCell(row, col, true);
+                        });
+
+                        // if the broadcast said gameOver (someone hit a mine), lock UI
+                        if (e.gameOver) {
+                            gameOver = true;
+                            statusMessage.textContent = 'Game Over!';
+                            board.flat().forEach(c => { if (c.element) c.element.disabled = true; });
+                        }
+                    }
+                });
+        }
+
+        // initialize
+        initGame();
+
+        // local restart only (does not sync to others)
+        restartBtn.addEventListener('click', () => {
             initGame();
-
-            restartBtn.addEventListener('click', () => {
-                // local restart (does not affect other players)
-                // If you want restart to sync across players, broadcast a 'restart' action here.
-                initGame();
-            });
         });
-
         </script>
 
 </x-app-layout>
