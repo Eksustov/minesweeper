@@ -15,11 +15,13 @@ class GameStarted implements ShouldBroadcast
 
     public $roomId;
     public $gameId;
+    public $board;
 
-    public function __construct(Room $room, $gameId)
+    public function __construct($roomId, $gameId, $board)
     {
-        $this->roomId = $room->id;
+        $this->roomId = $roomId;
         $this->gameId = $gameId;
+        $this->board = $board;
     }
 
     public function broadcastOn()
@@ -32,5 +34,3 @@ class GameStarted implements ShouldBroadcast
         return 'GameStarted';
     }
 }
-
-

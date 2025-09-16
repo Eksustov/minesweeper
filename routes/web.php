@@ -43,6 +43,7 @@ Route::middleware('auth')->group(function () {
     Route::post('/rooms/{room}/start', [RoomController::class, 'start'])->name('rooms.start');
     Route::get('/rooms/{room}/game', [RoomController::class, 'game'])->name('rooms.game');
     Route::post('/games/update', [RoomController::class, 'update'])->name('games.update');
+    Route::post('/rooms/{room}/restart', [RoomController::class, 'restart'])->name('games.restart');
 });
 
 require __DIR__.'/auth.php';

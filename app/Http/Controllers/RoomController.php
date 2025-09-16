@@ -144,17 +144,19 @@ class RoomController extends Controller
             $mines = (int) $request->input('mines', 10);
         }
 
+        $board = app(\App\Services\MinesweeperService::class)->generateBoard($rows, $cols, $mines);
+
         // Create one shared game for the room
         $game = $room->game()->create([
             'difficulty' => $difficulty,
             'rows' => $rows,
             'cols' => $cols,
             'mines' => $mines,
-            'board' => json_encode(app(MinesweeperService::class)->generateBoard($rows, $cols, $mines)),
+            'board' => json_encode($board),
             'started' => true,
         ]);
 
-        broadcast(new GameStarted($room, $game->id))->toOthers();
+        broadcast(new \App\Events\GameStarted($room->id, $game->id, $board))->toOthers();
 
         return redirect()->route('rooms.game', [$room]);
     }
@@ -318,6 +320,53 @@ class RoomController extends Controller
         broadcast(new \App\Events\PlayerKicked($room->id, $targetUserId))->toOthers();
 
         return response()->json(['status' => 'ok', 'message' => 'Player kicked successfully.']);
+    }
+
+    public function restart(Room $room, Request $request)
+    {
+        $user = auth()->user();
+
+        // only the creator can restart
+        if ($room->user_id !== $user->id) {
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Only the room creator can restart.'
+            ], 403);
+        }
+
+        // find the active game record
+        $game = $room->game()->latest()->first();
+        if (!$game) {
+            return response()->json([
+                'status' => 'error',
+                'message' => 'No game found for this room.'
+            ], 404);
+        }
+
+        $rows = $game->rows;
+        $cols = $game->cols;
+        $mines = $game->mines;
+
+        // generate a fresh board via the service
+        $board = app(\App\Services\MinesweeperService::class)->generateBoard($rows, $cols, $mines);
+
+        // reset game state
+        $game->board = json_encode($board);
+        $game->flags = json_encode([]);      // empty flags
+        $game->revealed = json_encode([]);   // empty revealed
+        $game->started = true;
+        $game->save();
+
+        // broadcast new game with correct parameters
+        broadcast(new \App\Events\GameStarted($room->id, $game->id, $board))->toOthers();
+
+        return response()->json([
+            'status' => 'ok',
+            'board' => $board,
+            'rows' => $rows,
+            'cols' => $cols,
+            'mines' => $mines,
+        ]);
     }
 
 }
