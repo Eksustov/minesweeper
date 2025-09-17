@@ -12,10 +12,15 @@
         <!-- Fonts -->
         <link rel="preconnect" href="https://fonts.bunny.net">
         <link href="https://fonts.bunny.net/css?family=figtree:400,500,600&display=swap" rel="stylesheet" />
-        <script src="https://cdn.jsdelivr.net/npm/axios/dist/axios.min.js"></script>
 
         <!-- Scripts -->
-        @vite(['resources/css/app.css', 'resources/js/app.js'])
+        <script src="https://cdn.jsdelivr.net/npm/axios/dist/axios.min.js"></script>
+        @vite([
+            'resources/css/app.css',
+            'resources/js/bootstrap.js', // Echo setup
+            'resources/js/app.js',       // global JS
+            'resources/js/pages/room.js'       // room subscription
+        ])
     </head>
     <body class="font-sans antialiased">
         <div class="min-h-screen bg-gradient-to-r from-transparent to-gray-500">

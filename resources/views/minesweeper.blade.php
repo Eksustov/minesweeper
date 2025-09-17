@@ -41,12 +41,17 @@
         <div class="w-48 ml-6">
             <h2 class="text-lg font-bold mb-2">Players</h2>
             <ul id="playerList">
-            @foreach ($room->players as $player)
-                <li id="player-{{ $player->id }}" class="flex items-center space-x-2 mb-1">
-                    <span class="inline-block w-4 h-4 rounded" style="background-color: {{ $player->pivot->color }}"></span>
-                    <span>{{ $player->name }}</span>
-                </li>
-            @endforeach
+                @foreach ($room->players as $player)
+                    <li id="player-{{ $player->id }}" class="flex items-center space-x-2 mb-1">
+                        <span class="inline-block w-4 h-4 rounded" style="background-color: {{ $player->pivot->color }}"></span>
+                        <span>
+                            {{ $player->name }}
+                            @if ($player->id === $room->creator->id)
+                                <span class="text-sm text-gray-500">(creator)</span>
+                            @endif
+                        </span>
+                    </li>
+                @endforeach
             </ul>
         </div>
     </div>
@@ -55,14 +60,14 @@
 <!-- Room meta for live updates -->
 <div id="room-meta" data-room-id="{{ $room->id }}"></div>
 
-<script>
+<script type="module">
     let playerColor = "{{ $room->players->find(auth()->id())?->pivot->color ?? '#000000' }}";
     let rows = {{ $rows }};
     let cols = {{ $cols }};
     let mines = {{ $mines }};
-    let initialBoard = @json(json_decode($board)); // array of { mine: bool, count: int }
-    const savedFlags = @json($flags);
-    const savedRevealed = @json($revealed);
+    let initialBoard = @json(json_decode($board));
+    let savedFlags = @json($flags);
+    let savedRevealed = @json($revealed);
     const roomId = {{ $room->id }};
     const updateUrl = "{{ route('games.update') }}";
 
@@ -77,6 +82,19 @@
     let board = [];
     let flagsPlaced = 0;
     let gameOver = false;
+
+    console.log('Echo object:', window.Echo);
+
+    if (window.Echo) {
+        window.Echo.connector.pusher.connection.bind('connected', () => {
+            console.log('✅ Pusher connected!');
+        });
+        window.Echo.connector.pusher.connection.bind('error', (err) => {
+            console.error('❌ Pusher connection error', err);
+        });
+    } else {
+        console.error('❌ Echo not initialized');
+    }
 
     function initGame() {
         gameContainer.style.gridTemplateColumns = `repeat(${cols}, 3rem)`;
@@ -161,7 +179,7 @@
 
         updateMineCounter();
 
-        axios.post("{{ route('games.update') }}", {
+        axios.post(updateUrl, {
             roomId: roomId,
             row: r,
             col: c,
@@ -198,7 +216,7 @@
             return;
         }
 
-        axios.post("{{ route('games.update') }}", {
+        axios.post(updateUrl, {
             roomId: roomId,
             action: 'reveal',
             value: toReveal
@@ -267,94 +285,96 @@
         }
     }
 
-        // ------------------
-        // Echo for multiplayer updates
-        // ------------------
-        if (window.Echo && roomId) {
-            window.Echo.channel(`room.${roomId}`)
-                .listen('.TileUpdated', e => {
-                    if (e.action === 'flag') {
-                        const cell = board[e.row]?.[e.col];
-                        if (!cell) return;
-                        cell.flagged = !!e.value;
-                        if (cell.flagged) {
-                            cell.flagColor = e.playerColor ?? '#000';
-                            cell.element.textContent = '🚩';
-                            cell.element.style.backgroundColor = cell.flagColor;
-                        } else {
-                            cell.flagColor = null;
-                            cell.element.textContent = '';
-                            cell.element.style.backgroundColor = '';
-                        }
-                        flagsPlaced = board.flat().filter(x => x.flagged).length;
-                        updateMineCounter();
-                    }
+    // ------------------
+    // Echo for multiplayer updates (silent if Echo is missing)
+    // ------------------
+    if (window.Echo && roomId) {
+        console.log(`Subscribing to room.${roomId}...`);
+        const channel = window.Echo.channel(`room.${roomId}`);
 
-                    if (e.action === 'reveal') {
-                        (e.value || []).forEach(({ row, col, mine, count }) => {
-                            const cell = board[row]?.[col];
-                            if (!cell || cell.revealed) return;
-                            if (typeof mine !== 'undefined') cell.mine = !!mine;
-                            if (typeof count !== 'undefined') cell.count = count;
-                            revealCell(row, col, true);
-                        });
-                        if (e.gameOver) {
-                            gameOver = true;
-                            statusMessage.textContent = 'Game Over!';
-                            board.flat().forEach(c => { if (c.element) c.element.disabled = true; });
-                        }
-                    }
-
-                    window.Echo.channel(`room.${roomId}`)
-                    .listen('.GameStarted', e => {
-                        console.log("New game started:", e);
-
-                        // Reset globals with the fresh board
-                        initialBoard.length = 0;
-                        for (let r = 0; r < e.board.length; r++) {
-                            initialBoard[r] = e.board[r];
-                        }
-                        rows = e.board.length;
-                        cols = e.board[0].length;
-                        mines = e.board.flat().filter(cell => cell.mine).length;
-
-                        initGame();
-                    });
-                });
-        }
-
-        // ------------------
-        // Restart button
-        // ------------------
-        // Restart button: request server to generate a fresh board, then re-init with it
-        restartBtn.addEventListener('click', () => {
-            axios.post(`/rooms/${roomId}/restart`)
-                .then(res => {
-                    if (res.data?.status !== 'ok') {
-                        throw new Error(res.data?.message || 'Failed to restart');
-                    }
-
-                    // update frontend with the new board
-                    if (res.data.board) {
-                        initialBoard = res.data.board;
-                        rows = res.data.rows ?? rows;
-                        cols = res.data.cols ?? cols;
-                        mines = res.data.mines ?? mines;
-
-                        // reset flags/revealed UI
-                        initGame();
-                    }
-                })
-                .catch(err => {
-                    console.error('restart failed', err);
-                    alert(err.response?.data?.message || err.message || 'Failed to restart game');
-                });
+        channel.subscribed(() => {
+            console.log(`✅ Subscribed to room.${roomId}`);
         });
 
+        channel.listen('.TileUpdated', (e) => {
+            console.log('TileUpdated received', e);
 
+            if (e.action === 'flag') {
+                const cell = board[e.row]?.[e.col];
+                if (!cell) return;
+                cell.flagged = !!e.value;
+                if (cell.flagged) {
+                    cell.flagColor = e.playerColor ?? '#000';
+                    cell.element.textContent = '🚩';
+                    cell.element.style.backgroundColor = cell.flagColor;
+                } else {
+                    cell.flagColor = null;
+                    cell.element.textContent = '';
+                    cell.element.style.backgroundColor = '';
+                }
+                flagsPlaced = board.flat().filter(x => x.flagged).length;
+                updateMineCounter();
+            }
 
+            if (e.action === 'reveal') {
+                (e.value || []).forEach(({ row, col, mine, count }) => {
+                    const cell = board[row]?.[col];
+                    if (!cell || cell.revealed) return;
+                    if (typeof mine !== 'undefined') cell.mine = !!mine;
+                    if (typeof count !== 'undefined') cell.count = count;
+                    revealCell(row, col, true);
+                });
+                if (e.gameOver) {
+                    gameOver = true;
+                    statusMessage.textContent = 'Game Over!';
+                    board.flat().forEach(c => { if (c.element) c.element.disabled = true; });
+                }
+            }
+        });
 
-        // Initialize
-        initGame();
-    </script>
+        channel.listen('.GameStarted', (e) => {
+            console.log("New game started:", e);
+
+            initialBoard = e.board;
+            rows = e.rows;
+            cols = e.cols;
+            mines = e.mines;
+
+            savedFlags = {};
+            savedRevealed = {};
+
+            initGame();
+        });
+    }
+
+    // ------------------
+    // Restart button
+    // ------------------
+    restartBtn.addEventListener('click', () => {
+        axios.post(`/rooms/${roomId}/restart`)
+            .then(res => {
+                if (res.data?.status !== 'ok') throw new Error(res.data?.message || 'Failed to restart');
+
+                if (res.data.board) {
+                    initialBoard = res.data.board;
+                    rows = res.data.rows ?? rows;
+                    cols = res.data.cols ?? cols;
+                    mines = res.data.mines ?? mines;
+
+                    savedFlags = {};
+                    savedRevealed = {};
+
+                    initGame();
+                }
+            })
+            .catch(err => {
+                console.error('restart failed', err);
+                alert(err.response?.data?.message || err.message || 'Failed to restart game');
+            });
+    });
+
+    // Initialize
+    initGame();
+</script>
+
 </x-app-layout>

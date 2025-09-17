@@ -6,7 +6,7 @@ document.addEventListener('DOMContentLoaded', () => {
   
     window.Echo.channel(`room.${roomId}`)
     .listen('.PlayerJoined', (e) => { // <-- add the dot here
-        const list = document.getElementById('playersList');
+        const list = document.getElementById('playerList');
         if (!list) return;
         list.innerHTML = '';
         e.players.forEach(player => {
