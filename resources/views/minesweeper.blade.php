@@ -196,6 +196,7 @@
         toReveal.forEach(({ row, col }) => revealCell(row, col));
 
         if (toReveal.some(x => board[x.row][x.col].mine)) {
+            // Game over
             gameOver = true;
             statusMessage.textContent = 'Game Over!';
             board.flat().forEach(cell => {
@@ -203,19 +204,18 @@
                 if (cell.element) cell.element.disabled = true;
             });
 
-            const minesToSend = board.flat()
-                .filter(c => c.mine)
-                .map(c => ({ row: c.row, col: c.col, mine: true }));
-
-            axios.post(`/rooms/${roomId}/restart`, {
+            // Tell the server it's game over (broadcast only)
+            axios.post(updateUrl, {
+                roomId: roomId,
                 action: 'reveal',
-                value: minesToSend,
+                value: toReveal,
                 gameOver: true
             }).catch(err => console.error('reveal update failed', err));
 
             return;
         }
 
+        // Normal reveal (safe cell)
         axios.post(updateUrl, {
             roomId: roomId,
             action: 'reveal',
@@ -335,13 +335,17 @@
         channel.listen('.GameStarted', (e) => {
             console.log("New game started:", e);
 
-            initialBoard = e.board;
+            initialBoard = Array.isArray(e.board)
+                ? e.board
+                : JSON.parse(e.board);
+
             rows = e.rows;
             cols = e.cols;
             mines = e.mines;
 
             savedFlags = {};
             savedRevealed = {};
+            gameOver = false;
 
             initGame();
         });

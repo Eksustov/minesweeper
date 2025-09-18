@@ -102,8 +102,57 @@
 
             // Listen for GameStarted event
             window.Echo.channel(`room.${roomId}`)
-            .listen(".GameStarted", (e) => {
-                window.location.href = `/rooms/${roomId}/game`;
+            .listen('.GameStarted', (e) => {
+                console.log("✅ Received new game board", e);
+
+                // Reset state
+                board = [];
+                gameOver = false;
+                statusMessage.textContent = '';
+
+                // Reset globals from payload
+                rows = e.rows;
+                cols = e.cols;
+                mines = e.mines;
+                savedFlags = {};
+                savedRevealed = {};
+
+                const boardEl = document.getElementById('board');
+                boardEl.innerHTML = '';
+
+                // Build new board
+                e.board.forEach((row, r) => {
+                    const rowEl = document.createElement('div');
+                    rowEl.classList.add('row');
+                    board[r] = [];
+
+                    row.forEach((cell, c) => {
+                        const btn = document.createElement('button');
+                        btn.classList.add('cell');
+                        btn.disabled = false;
+                        btn.textContent = '';
+
+                        btn.addEventListener('click', () => reveal(r, c));
+                        btn.addEventListener('contextmenu', (ev) => {
+                            ev.preventDefault();
+                            toggleFlag(r, c);
+                        });
+
+                        rowEl.appendChild(btn);
+
+                        board[r][c] = {
+                            row: r,
+                            col: c,
+                            mine: cell.mine,
+                            count: cell.count ?? 0,
+                            flagged: false,
+                            revealed: false,
+                            element: btn,
+                        };
+                    });
+
+                    boardEl.appendChild(rowEl);
+                });
             });
 
             const difficultySelect = document.getElementById('difficulty');

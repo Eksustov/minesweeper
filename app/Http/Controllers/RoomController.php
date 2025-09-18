@@ -156,7 +156,13 @@ class RoomController extends Controller
             'started' => true,
         ]);
 
-        broadcast(new \App\Events\GameStarted($room->id, $game->id, $board))->toOthers();
+        broadcast(new \App\Events\GameStarted(
+            $room->id,
+            $board,
+            $rows,
+            $cols,
+            $mines
+        ))->toOthers();
 
         return redirect()->route('rooms.game', [$room]);
     }
@@ -358,7 +364,13 @@ class RoomController extends Controller
         $game->save();
 
         // broadcast new game with correct parameters
-        broadcast(new \App\Events\GameStarted($room->id, $game->id, $board))->toOthers();
+        broadcast(new \App\Events\GameStarted(
+            $room->id,
+            $board,
+            $rows,
+            $cols,
+            $mines
+        ))->toOthers();
 
         return response()->json([
             'status' => 'ok',
