@@ -9,26 +9,25 @@
     <div class="py-12 flex flex-col items-center space-y-4">
         <div class="bg-white shadow-md rounded-lg p-6 w-full max-w-md">
             <h3 class="text-lg font-bold mb-4">Room Details</h3>
-
             <p><strong>Creator:</strong> {{ $room->creator->name }}</p>
 
             <h4 class="mt-4 font-semibold">Players in this room:</h4>
             <ul id="playersList" class="list-disc list-inside">
-            @foreach ($room->players as $player)
-                <li class="flex items-center space-x-2 mb-1">
-                    <span class="inline-block w-4 h-4 rounded" style="background-color: {{ $player->pivot->color }}"></span>
-                    <span>{{ $player->name }}</span>
+                @foreach ($room->players as $player)
+                    <li class="flex items-center space-x-2 mb-1" id="player-{{ $player->id }}">
+                        <span class="inline-block w-4 h-4 rounded" style="background-color: {{ $player->pivot->color }}"></span>
+                        <span>{{ $player->name }}</span>
 
-                    @if ($room->user_id === auth()->id() && $player->id !== auth()->id())
-                        <button
-                            class="ml-auto px-2 py-1 bg-red-500 text-white rounded text-sm hover:bg-red-600"
-                            onclick="kickPlayer({{ $player->id }})"
-                        >
-                            Kick
-                        </button>
-                    @endif
-                </li>
-            @endforeach
+                        @if ($room->user_id === auth()->id() && $player->id !== auth()->id())
+                            <button
+                                class="ml-auto px-2 py-1 bg-red-500 text-white rounded text-sm hover:bg-red-600"
+                                onclick="kickPlayer({{ $player->id }})"
+                            >
+                                Kick
+                            </button>
+                        @endif
+                    </li>
+                @endforeach
             </ul>
 
             <!-- Join room button if not in room -->
@@ -51,7 +50,7 @@
                 </form>
             @endif
 
-            <!-- Show join game if active -->
+            <!-- Join game button if active -->
             @if($activeGame)
                 <form method="GET" action="{{ route('rooms.game', $room) }}" class="mt-4">
                     <button type="submit" class="w-full bg-purple-500 text-white py-2 rounded hover:bg-purple-600">
@@ -87,131 +86,130 @@
                     </button>
                 </form>
             @endif
-
         </div>
     </div>
 
     <div id="room-meta" data-room-id="{{ $room->id }}"></div>
 
     <script>
-document.addEventListener("DOMContentLoaded", () => {
-    const meta = document.getElementById("room-meta");
-    if (!meta) return;
-    const roomId = meta.dataset.roomId;
+        document.addEventListener("DOMContentLoaded", () => {
+            const roomMeta = document.getElementById("room-meta");
+            if (!roomMeta) return;
 
-    const playersList = document.getElementById('playersList');
+            const roomId = roomMeta.dataset.roomId;
+            const playersList = document.getElementById('playersList');
 
-    // ===== PLAYER LIST MANAGEMENT =====
-    function rebuildPlayersList(players) {
-        playersList.innerHTML = ''; // clear existing list
-        players.forEach(player => {
-            const li = document.createElement('li');
-            li.id = `player-${player.id}`;
-            li.className = 'flex items-center space-x-2 mb-1';
-            li.innerHTML = `
-                <span class="inline-block w-4 h-4 rounded" style="background-color: ${player.color ?? '#ccc'}"></span>
-                <span>${player.name}</span>
-            `;
+            // ===== PLAYER LIST MANAGEMENT =====
+            function rebuildPlayersList(players) {
+                playersList.innerHTML = ''; // clear existing list
+                players.forEach(player => {
+                    const li = document.createElement('li');
+                    li.id = `player-${player.id}`;
+                    li.className = 'flex items-center space-x-2 mb-1';
+                    li.innerHTML = `
+                        <span class="inline-block w-4 h-4 rounded" style="background-color: ${player.color ?? '#ccc'}"></span>
+                        <span>${player.name}</span>
+                    `;
 
-            // Kick button for room creator
-            @if($room->user_id === auth()->id())
-            if (player.id !== {{ auth()->id() }}) {
-                const btn = document.createElement('button');
-                btn.className = 'ml-auto px-2 py-1 bg-red-500 text-white rounded text-sm hover:bg-red-600';
-                btn.textContent = 'Kick';
-                btn.addEventListener('click', () => kickPlayer(player.id));
-                li.appendChild(btn);
+                    // Kick button for room creator
+                    @if($room->user_id === auth()->id())
+                    if (player.id !== {{ auth()->id() }}) {
+                        const btn = document.createElement('button');
+                        btn.className = 'ml-auto px-2 py-1 bg-red-500 text-white rounded text-sm hover:bg-red-600';
+                        btn.textContent = 'Kick';
+                        btn.addEventListener('click', () => kickPlayer(player.id));
+                        li.appendChild(btn);
+                    }
+                    @endif
+
+                    playersList.appendChild(li);
+                });
             }
-            @endif
 
-            playersList.appendChild(li);
-        });
-    }
+            // ===== KICK PLAYER FUNCTION =====
+            window.kickPlayer = function(playerId) {
+                if (!confirm("Are you sure you want to kick this player?")) return;
 
-    // ===== LISTEN FOR PLAYER JOIN / LEAVE =====
-    window.Echo.channel(`room.${roomId}`)
-        .listen('.PlayerJoined', (e) => {
-            console.log("👤 Player joined:", e.players);
-            rebuildPlayersList(e.players);
-        })
-        .listen('.PlayerLeft', (e) => {
-            console.log("🚪 Player left:", e.players);
-            rebuildPlayersList(e.players); // rebuild with remaining players and colors
-        });
+                axios.post(`/rooms/${roomId}/kick`, { user_id: playerId })
+                    .then(res => console.log(res.data.message))
+                    .catch(err => alert(err.response?.data?.message || 'Failed to kick player'));
+            };
 
-    // ===== MINESWEEPER GAME UPDATES =====
-    window.Echo.channel(`room.${roomId}`)
-        .listen('.GameStarted', (e) => {
-            console.log("✅ New game board received", e);
-
-            board = [];
-            gameOver = false;
-            statusMessage.textContent = '';
-
-            rows = e.rows;
-            cols = e.cols;
-            mines = e.mines;
-            savedFlags = {};
-            savedRevealed = {};
-
-            const boardEl = document.getElementById('board');
-            boardEl.innerHTML = '';
-
-            e.board.forEach((row, r) => {
-                const rowEl = document.createElement('div');
-                rowEl.classList.add('row');
-                board[r] = [];
-
-                row.forEach((cell, c) => {
-                    const btn = document.createElement('button');
-                    btn.classList.add('cell');
-                    btn.disabled = false;
-                    btn.textContent = '';
-
-                    btn.addEventListener('click', () => reveal(r, c));
-                    btn.addEventListener('contextmenu', (ev) => {
-                        ev.preventDefault();
-                        toggleFlag(r, c);
-                    });
-
-                    rowEl.appendChild(btn);
-
-                    board[r][c] = {
-                        row: r,
-                        col: c,
-                        mine: cell.mine,
-                        count: cell.count ?? 0,
-                        flagged: false,
-                        revealed: false,
-                        element: btn,
-                    };
+            // ===== LISTEN FOR PLAYER JOIN / LEAVE =====
+            window.Echo.channel(`room.${roomId}`)
+                .listen('.PlayerJoined', (e) => {
+                    console.log("👤 Player joined:", e.players);
+                    rebuildPlayersList(e.players);
+                })
+                .listen('.PlayerLeft', (e) => {
+                    console.log("🚪 Player left:", e.players);
+                    rebuildPlayersList(e.players);
                 });
 
-                boardEl.appendChild(rowEl);
-            });
+            // ===== LISTEN FOR PLAYER KICKED =====
+            window.Echo.channel(`room.${roomId}`)
+                .listen('.PlayerKicked', e => {
+                    if (e.playerId === {{ auth()->id() }}) {
+                        alert("You have been kicked from the room!");
+                        window.location.href = "{{ route('welcome') }}"; // redirect kicked player
+                    } else {
+                        const li = document.getElementById(`player-${e.playerId}`);
+                        if (li) li.remove();
+                    }
+                });
+
+            // ===== MINESWEEPER GAME UPDATES =====
+            window.Echo.channel(`room.${roomId}`)
+                .listen('.GameStarted', (e) => {
+                    console.log("✅ New game board received", e);
+
+                    board = [];
+                    gameOver = false;
+                    statusMessage.textContent = '';
+
+                    rows = e.rows;
+                    cols = e.cols;
+                    mines = e.mines;
+                    savedFlags = {};
+                    savedRevealed = {};
+
+                    const boardEl = document.getElementById('board');
+                    boardEl.innerHTML = '';
+
+                    e.board.forEach((row, r) => {
+                        const rowEl = document.createElement('div');
+                        rowEl.classList.add('row');
+                        board[r] = [];
+
+                        row.forEach((cell, c) => {
+                            const btn = document.createElement('button');
+                            btn.classList.add('cell');
+                            btn.disabled = false;
+                            btn.textContent = '';
+
+                            btn.addEventListener('click', () => reveal(r, c));
+                            btn.addEventListener('contextmenu', (ev) => {
+                                ev.preventDefault();
+                                toggleFlag(r, c);
+                            });
+
+                            rowEl.appendChild(btn);
+
+                            board[r][c] = {
+                                row: r,
+                                col: c,
+                                mine: cell.mine,
+                                count: cell.count ?? 0,
+                                flagged: false,
+                                revealed: false,
+                                element: btn,
+                            };
+                        });
+
+                        boardEl.appendChild(rowEl);
+                    });
+                });
         });
-
-    // ===== KICK PLAYER FUNCTION =====
-    window.kickPlayer = function(playerId) {
-        if (!confirm("Are you sure you want to kick this player?")) return;
-
-        axios.post(`/rooms/${roomId}/kick`, { user_id: playerId })
-            .then(res => console.log(res.data.message))
-            .catch(err => alert(err.response?.data?.message || 'Failed to kick player'));
-    };
-
-    // ===== LISTEN FOR PLAYER KICKED =====
-    window.Echo.channel(`room.${roomId}`)
-        .listen('.PlayerKicked', e => {
-            if (e.playerId === {{ auth()->id() }}) {
-                alert("You have been kicked from the room!");
-                window.location.href = "{{ route('welcome') }}";
-            } else {
-                const li = document.getElementById(`player-${e.playerId}`);
-                if (li) li.remove();
-            }
-        });
-});
-</script>
+        </script>
 
 </x-app-layout>

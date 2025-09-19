@@ -8,6 +8,8 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Str;
 use App\Events\PlayerJoined;
+use App\Events\PlayerLeft;
+use App\Events\PlayerKicked;
 use App\Events\RoomUpdated;
 use App\Events\GameStarted;
 use App\Events\GameUpdated;
@@ -304,25 +306,31 @@ class RoomController extends Controller
         $user = auth()->user();
         $targetUserId = $request->input('user_id');
 
-        // Only creator can kick
+        // Only the creator can kick
         if ($room->user_id !== $user->id) {
             return response()->json(['status' => 'error', 'message' => 'Only the room creator can kick players.'], 403);
         }
 
-        // Prevent kicking yourself
+        // Cannot kick yourself
         if ($targetUserId == $user->id) {
             return response()->json(['status' => 'error', 'message' => 'You cannot kick yourself.'], 400);
         }
 
-        // Check if the player is in the room
+        // Check if player exists in room
         if (!$room->players->contains($targetUserId)) {
             return response()->json(['status' => 'error', 'message' => 'Player not found in this room.'], 404);
         }
 
-        // Remove the player
+        // Detach player
         $room->players()->detach($targetUserId);
 
-        // Broadcast to the room that a player was kicked
+        // Reload room players
+        $room->load('players');
+
+        // Broadcast updated player list
+        broadcast(new \App\Events\PlayerLeft($room))->toOthers();
+
+        // Broadcast kicked event for the target player
         broadcast(new \App\Events\PlayerKicked($room->id, $targetUserId))->toOthers();
 
         return response()->json(['status' => 'ok', 'message' => 'Player kicked successfully.']);

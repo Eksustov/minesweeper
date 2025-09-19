@@ -3,9 +3,9 @@
 namespace App\Events;
 
 use Illuminate\Broadcasting\Channel;
-use Illuminate\Queue\SerializesModels;
-use Illuminate\Broadcasting\InteractsWithSockets;
 use Illuminate\Foundation\Events\Dispatchable;
+use Illuminate\Broadcasting\InteractsWithSockets;
+use Illuminate\Queue\SerializesModels;
 use Illuminate\Contracts\Broadcasting\ShouldBroadcast;
 
 class PlayerKicked implements ShouldBroadcast
@@ -31,4 +31,3 @@ class PlayerKicked implements ShouldBroadcast
         return 'PlayerKicked';
     }
 }
-
