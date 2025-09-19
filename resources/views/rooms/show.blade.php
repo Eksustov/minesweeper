@@ -94,108 +94,124 @@
     <div id="room-meta" data-room-id="{{ $room->id }}"></div>
 
     <script>
-        document.addEventListener("DOMContentLoaded", () => {
-            const meta = document.getElementById("room-meta");
-            if (!meta) return;
+document.addEventListener("DOMContentLoaded", () => {
+    const meta = document.getElementById("room-meta");
+    if (!meta) return;
+    const roomId = meta.dataset.roomId;
 
-            const roomId = meta.dataset.roomId;
+    const playersList = document.getElementById('playersList');
 
-            // Listen for GameStarted event
-            window.Echo.channel(`room.${roomId}`)
-            .listen('.GameStarted', (e) => {
-                console.log("✅ Received new game board", e);
+    // ===== PLAYER LIST MANAGEMENT =====
+    function rebuildPlayersList(players) {
+        playersList.innerHTML = ''; // clear existing list
+        players.forEach(player => {
+            const li = document.createElement('li');
+            li.id = `player-${player.id}`;
+            li.className = 'flex items-center space-x-2 mb-1';
+            li.innerHTML = `
+                <span class="inline-block w-4 h-4 rounded" style="background-color: ${player.color ?? '#ccc'}"></span>
+                <span>${player.name}</span>
+            `;
 
-                // Reset state
-                board = [];
-                gameOver = false;
-                statusMessage.textContent = '';
-
-                // Reset globals from payload
-                rows = e.rows;
-                cols = e.cols;
-                mines = e.mines;
-                savedFlags = {};
-                savedRevealed = {};
-
-                const boardEl = document.getElementById('board');
-                boardEl.innerHTML = '';
-
-                // Build new board
-                e.board.forEach((row, r) => {
-                    const rowEl = document.createElement('div');
-                    rowEl.classList.add('row');
-                    board[r] = [];
-
-                    row.forEach((cell, c) => {
-                        const btn = document.createElement('button');
-                        btn.classList.add('cell');
-                        btn.disabled = false;
-                        btn.textContent = '';
-
-                        btn.addEventListener('click', () => reveal(r, c));
-                        btn.addEventListener('contextmenu', (ev) => {
-                            ev.preventDefault();
-                            toggleFlag(r, c);
-                        });
-
-                        rowEl.appendChild(btn);
-
-                        board[r][c] = {
-                            row: r,
-                            col: c,
-                            mine: cell.mine,
-                            count: cell.count ?? 0,
-                            flagged: false,
-                            revealed: false,
-                            element: btn,
-                        };
-                    });
-
-                    boardEl.appendChild(rowEl);
-                });
-            });
-
-            const difficultySelect = document.getElementById('difficulty');
-            const customSettings = document.getElementById('customSettings');
-
-            function toggleCustom() {
-                const isCustom = difficultySelect.value === 'custom';
-                customSettings.classList.toggle('hidden', !isCustom);
-                document.querySelectorAll('#customSettings input').forEach(input => {
-                    input.disabled = !isCustom;
-                });
+            // Kick button for room creator
+            @if($room->user_id === auth()->id())
+            if (player.id !== {{ auth()->id() }}) {
+                const btn = document.createElement('button');
+                btn.className = 'ml-auto px-2 py-1 bg-red-500 text-white rounded text-sm hover:bg-red-600';
+                btn.textContent = 'Kick';
+                btn.addEventListener('click', () => kickPlayer(player.id));
+                li.appendChild(btn);
             }
+            @endif
 
-            if (difficultySelect) {
-                difficultySelect.addEventListener('change', toggleCustom);
-                toggleCustom();
-            }
+            playersList.appendChild(li);
+        });
+    }
+
+    // ===== LISTEN FOR PLAYER JOIN / LEAVE =====
+    window.Echo.channel(`room.${roomId}`)
+        .listen('.PlayerJoined', (e) => {
+            console.log("👤 Player joined:", e.players);
+            rebuildPlayersList(e.players);
+        })
+        .listen('.PlayerLeft', (e) => {
+            console.log("🚪 Player left:", e.players);
+            rebuildPlayersList(e.players); // rebuild with remaining players and colors
         });
 
-        function kickPlayer(playerId) {
-                if (!confirm("Are you sure you want to kick this player?")) return;
+    // ===== MINESWEEPER GAME UPDATES =====
+    window.Echo.channel(`room.${roomId}`)
+        .listen('.GameStarted', (e) => {
+            console.log("✅ New game board received", e);
 
-                axios.post('/rooms/{{ $room->id }}/kick', { user_id: playerId })
-                    .then(res => {
-                        console.log(res.data.message);
-                    })
-                    .catch(err => {
-                        alert(err.response?.data?.message || 'Failed to kick player');
-                    });
-            }
+            board = [];
+            gameOver = false;
+            statusMessage.textContent = '';
 
-            if (window.Echo && roomId) {
-                window.Echo.channel(`room.${roomId}`)
-                    .listen('.PlayerKicked', e => {
-                        if (e.playerId === {{ auth()->id() }}) {
-                            alert("You have been kicked from the room!");
-                            window.location.href = "{{ route('welcome') }}";
-                        } else {
-                            // Optional: remove player from DOM if someone else was kicked
-                            const li = document.querySelector(`#player-${e.playerId}`);
-                            if (li) li.remove();
-                        }
+            rows = e.rows;
+            cols = e.cols;
+            mines = e.mines;
+            savedFlags = {};
+            savedRevealed = {};
+
+            const boardEl = document.getElementById('board');
+            boardEl.innerHTML = '';
+
+            e.board.forEach((row, r) => {
+                const rowEl = document.createElement('div');
+                rowEl.classList.add('row');
+                board[r] = [];
+
+                row.forEach((cell, c) => {
+                    const btn = document.createElement('button');
+                    btn.classList.add('cell');
+                    btn.disabled = false;
+                    btn.textContent = '';
+
+                    btn.addEventListener('click', () => reveal(r, c));
+                    btn.addEventListener('contextmenu', (ev) => {
+                        ev.preventDefault();
+                        toggleFlag(r, c);
                     });
+
+                    rowEl.appendChild(btn);
+
+                    board[r][c] = {
+                        row: r,
+                        col: c,
+                        mine: cell.mine,
+                        count: cell.count ?? 0,
+                        flagged: false,
+                        revealed: false,
+                        element: btn,
+                    };
+                });
+
+                boardEl.appendChild(rowEl);
+            });
+        });
+
+    // ===== KICK PLAYER FUNCTION =====
+    window.kickPlayer = function(playerId) {
+        if (!confirm("Are you sure you want to kick this player?")) return;
+
+        axios.post(`/rooms/${roomId}/kick`, { user_id: playerId })
+            .then(res => console.log(res.data.message))
+            .catch(err => alert(err.response?.data?.message || 'Failed to kick player'));
+    };
+
+    // ===== LISTEN FOR PLAYER KICKED =====
+    window.Echo.channel(`room.${roomId}`)
+        .listen('.PlayerKicked', e => {
+            if (e.playerId === {{ auth()->id() }}) {
+                alert("You have been kicked from the room!");
+                window.location.href = "{{ route('welcome') }}";
+            } else {
+                const li = document.getElementById(`player-${e.playerId}`);
+                if (li) li.remove();
             }
-    </script>
+        });
+});
+</script>
+
 </x-app-layout>
