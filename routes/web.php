@@ -4,6 +4,7 @@ use App\Http\Controllers\ProfileController;
 use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\MinesweeperController;
 use App\Http\Controllers\RoomController;
+use App\Http\Controllers\GameController;
 use App\Models\Room;
 
 Route::get('/', function () {
