@@ -32,21 +32,21 @@ Route::middleware('auth')->group(function () {
     Route::patch('/profile', [ProfileController::class, 'update'])->name('profile.update');
     Route::delete('/profile', [ProfileController::class, 'destroy'])->name('profile.destroy');
 
-    Route::get('/rooms', [RoomController::class, 'index'])->name('rooms.index');
-    Route::post('/rooms', [RoomController::class, 'store'])->name('rooms.store');
-
-    Route::prefix('rooms/{room}')->group(function () {
-        Route::get('/', [RoomController::class, 'show'])->name('rooms.show');
-        Route::post('/join', [RoomController::class, 'join'])->name('rooms.join');
-        Route::post('/kick', [RoomController::class, 'kick'])->name('rooms.kick');
-        Route::post('/leave', [RoomController::class, 'leave'])->name('rooms.leave');
-
-        Route::get('/game', [RoomController::class, 'game'])->name('rooms.game');
-        Route::post('/restart', [GameController::class, 'restart'])->name('games.restart');
-        Route::post('/update', [GameController::class, 'update'])->name('games.update');
+    Route::prefix('rooms')->group(function () {
+        Route::get('/', [RoomController::class, 'index'])->name('rooms.index');
+        Route::post('/', [RoomController::class, 'store'])->name('rooms.store');
+        Route::get('/{room}', [RoomController::class, 'show'])->name('rooms.show');
+        Route::post('/{room}/join', [RoomController::class, 'join'])->name('rooms.join');
+        Route::post('/{room}/leave', [RoomController::class, 'leave'])->name('rooms.leave');
+        Route::post('/{room}/kick', [RoomController::class, 'kick'])->name('rooms.kick');
     });
-
-    Route::post('/games/update', [RoomController::class, 'update'])->name('games.update');
+    
+    Route::prefix('games')->group(function () {
+        Route::get('/{room}', [GameController::class, 'game'])->name('games.show');
+        Route::post('/{room}/start', [GameController::class, 'start'])->name('games.start');
+        Route::post('/{room}/update', [GameController::class, 'update'])->name('games.update');
+        Route::post('/{room}/restart', [GameController::class, 'restart'])->name('games.restart');
+    });
 });
 
 require __DIR__.'/auth.php';
