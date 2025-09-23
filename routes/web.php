@@ -35,15 +35,18 @@ Route::middleware('auth')->group(function () {
     Route::get('/rooms', [RoomController::class, 'index'])->name('rooms.index');
     Route::post('/rooms', [RoomController::class, 'store'])->name('rooms.store');
 
-    Route::get('/rooms/{room}', [RoomController::class, 'show'])->name('rooms.show');
-    Route::post('/rooms/{room}/join', [RoomController::class, 'join'])->name('rooms.join');
-    Route::post('/rooms/{room}/kick', [RoomController::class, 'kick'])->name('rooms.kick');
-    Route::post('/rooms/{room}/leave', [RoomController::class, 'leave'])->name('rooms.leave');
+    Route::prefix('rooms/{room}')->group(function () {
+        Route::get('/', [RoomsController::class, 'show'])->name('rooms.show');
+        Route::post('/join', [RoomController::class, 'join'])->name('rooms.join');
+        Route::post('/kick', [RoomController::class, 'kick'])->name('rooms.kick');
+        Route::post('/leave', [RoomController::class, 'leave'])->name('rooms.leave');
 
-    Route::post('/rooms/{room}/start', [RoomController::class, 'start'])->name('rooms.start');
-    Route::get('/rooms/{room}/game', [RoomController::class, 'game'])->name('rooms.game');
+        Route::get('/game', [RoomController::class, 'game'])->name('rooms.game');
+        Route::post('/restart', [GameController::class, 'restart'])->name('games.restart');
+        Route::post('/update', [GameController::class, 'update'])->name('games.update');
+    });
+
     Route::post('/games/update', [RoomController::class, 'update'])->name('games.update');
-    Route::post('/rooms/{room}/restart', [RoomController::class, 'restart'])->name('games.restart');
 });
 
 require __DIR__.'/auth.php';
