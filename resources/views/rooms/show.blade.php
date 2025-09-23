@@ -205,11 +205,9 @@
                                 element: btn,
                             };
                         });
-
                         boardEl.appendChild(rowEl);
                     });
                 });
         });
-        </script>
-
+    </script>
 </x-app-layout>
