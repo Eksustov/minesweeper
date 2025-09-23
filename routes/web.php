@@ -36,7 +36,7 @@ Route::middleware('auth')->group(function () {
     Route::post('/rooms', [RoomController::class, 'store'])->name('rooms.store');
 
     Route::prefix('rooms/{room}')->group(function () {
-        Route::get('/', [RoomsController::class, 'show'])->name('rooms.show');
+        Route::get('/', [RoomController::class, 'show'])->name('rooms.show');
         Route::post('/join', [RoomController::class, 'join'])->name('rooms.join');
         Route::post('/kick', [RoomController::class, 'kick'])->name('rooms.kick');
         Route::post('/leave', [RoomController::class, 'leave'])->name('rooms.leave');
