@@ -16,6 +16,30 @@ class RoomController extends Controller
         return view('welcome', compact('rooms'));
     }
 
+    public function json()
+    {
+        $rooms = \App\Models\Room::with('players')
+            ->get()
+            ->map(function ($room) {
+                return [
+                    'id' => $room->id,
+                    'code' => $room->code,
+                    'type' => $room->type,
+                    'max_players' => $room->max_players,
+                    'current_players' => $room->players->count(),
+                    'isInRoom' => $room->players->contains(auth()->id()),
+                ];
+            });
+
+        return response()->json($rooms);
+    }
+
+    private function refreshRoom(Room $room): void
+    {
+        $room->load('players');
+        broadcast(new RoomUpdated($room))->toOthers();
+    }
+
     public function store(Request $request)
     {
         $user = Auth::user();

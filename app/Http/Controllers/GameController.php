@@ -9,6 +9,30 @@ use App\Services\MinesweeperService;
 
 class GameController extends Controller
 {
+
+    public function game(Room $room)
+    {
+        // Example: set default game board config (easy mode)
+        $rows = 9;
+        $cols = 9;
+        $mines = 10;
+
+        // Build initial board (or load from DB if already saved)
+        $board = json_encode(array_fill(0, $rows, array_fill(0, $cols, 0)));
+        $flags = [];
+        $revealed = [];
+
+        return view('minesweeper', [
+            'room' => $room,
+            'rows' => $rows,
+            'cols' => $cols,
+            'mines' => $mines,
+            'board' => $board,
+            'flags' => $flags,
+            'revealed' => $revealed,
+        ]);
+    }
+
     public function show(Room $room)
     {
         $game = $room->game()->where('started', true)->latest()->firstOrFail();
@@ -53,47 +77,23 @@ class GameController extends Controller
         return redirect()->route('games.show', $room);
     }
 
-    public function update(Request $request)
+    public function update(Request $request, Room $room)
     {
-        $roomId = $request->input('roomId');
-        $row = $request->input('row');
-        $col = $request->input('col');
-        $action = $request->input('action');
-        $value = $request->input('value');
-        $gameOver = (bool) $request->input('gameOver', false);
+        $game = $room->game()->active()->firstOrFail();
 
-        $room = Room::findOrFail($roomId);
-        $game = $room->game()->where('started', true)->latest()->firstOrFail();
+        $playerColor = $room->players()->where('user_id', auth()->id())->first()?->pivot->color;
 
-        $player = $room->players()->where('user_id', auth()->id())->first();
-        $playerColor = $player?->pivot->color ?? null;
+        app(MinesweeperService::class)->updateTile($game, $request, $playerColor);
 
-        if ($action === 'flag') {
-            $flags = $game->flags ? json_decode($game->flags, true) : [];
-            $key = "{$row}-{$col}";
-            $value ? $flags[$key] = $playerColor : unset($flags[$key]);
-            $game->flags = json_encode($flags);
-        }
-
-        if ($action === 'reveal') {
-            $revealed = $game->revealed ? json_decode($game->revealed, true) : [];
-            foreach ($value as $cell) {
-                $revealed[$cell['row'] . '-' . $cell['col']] = true;
-            }
-            $game->revealed = json_encode($revealed);
-        }
-
-        if ($gameOver) {
-            $game->started = false;
-        }
-
-        $game->save();
-
-        $event = $action === 'flag'
-            ? new TileUpdated($roomId, $row, $col, $action, $value, $gameOver, $playerColor)
-            : new TileUpdated($roomId, null, null, $action, $value, $gameOver, null);
-
-        broadcast($event)->toOthers();
+        broadcast(new TileUpdated(
+            $room->id,
+            $request->row,
+            $request->col,
+            $request->action,
+            $request->value,
+            (bool) $request->gameOver,
+            $playerColor
+        ))->toOthers();
 
         return response()->json(['status' => 'ok']);
     }

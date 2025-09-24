@@ -52,7 +52,7 @@
 
             <!-- Join game button if active -->
             @if($activeGame)
-                <form method="GET" action="{{ route('rooms.game', $room) }}" class="mt-4">
+            <form method="GET" action="{{ route('games.show', $room) }}" class="mt-4">
                     <button type="submit" class="w-full bg-purple-500 text-white py-2 rounded hover:bg-purple-600">
                         Join Game
                     </button>
@@ -60,7 +60,7 @@
 
             <!-- Show start game options only to creator if no active game -->
             @elseif($room->user_id === auth()->id())
-                <form method="POST" action="{{ route('rooms.start', $room) }}" class="mt-4">
+                <form method="POST" action="{{ route('games.start', $room) }}" class="mt-4">
                     @csrf
                     <div class="mb-4">
                         <label class="block text-gray-700 font-semibold">Difficulty</label>

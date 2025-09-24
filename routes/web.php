@@ -34,6 +34,7 @@ Route::middleware('auth')->group(function () {
     Route::delete('/profile', [ProfileController::class, 'destroy'])->name('profile.destroy');
 
     Route::prefix('rooms')->group(function () {
+        Route::get('/json', [App\Http\Controllers\RoomController::class, 'json'])->name('rooms.json');
         Route::get('/', [RoomController::class, 'index'])->name('rooms.index');
         Route::post('/', [RoomController::class, 'store'])->name('rooms.store');
         Route::get('/{room}', [RoomController::class, 'show'])->name('rooms.show');
