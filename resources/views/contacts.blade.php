@@ -6,7 +6,7 @@
             <div class="bg-white overflow-hidden shadow-sm sm:rounded-lg">
                 <div class="p-6 text-gray-900">
                 <h1 class="text-3xl font-bold">Contacts</h1>
-                    <div><span class="font-semibold">Phone number: +371 sig mas ig</div>
+                    <div><span class="font-semibold">Phone number: +371 252 525 25</div>
                     <div><span class="font-semibold">Email: admin@edu.vtdt.lv</div>
                 </div>
             </div>

@@ -35,7 +35,7 @@ class GameController extends Controller
 
     public function show(Room $room)
     {
-        $game = $room->game()->where('started', true)->latest()->firstOrFail();
+        $game = $room->games()->where('started', true)->latest()->firstOrFail();
 
         return view('minesweeper', [
             'room' => $room,
@@ -43,10 +43,10 @@ class GameController extends Controller
             'rows' => $game->rows,
             'cols' => $game->cols,
             'mines' => $game->mines,
-            'board' => $game->board,
+            'board' => json_decode($game->board, true), // ✅ decode JSON into array
             'revealed' => $game->revealed ? json_decode($game->revealed, true) : [],
             'flags' => $game->flags ? json_decode($game->flags, true) : [],
-        ]);
+        ]);        
     }
 
     public function start(Room $room, Request $request)
@@ -55,7 +55,7 @@ class GameController extends Controller
             return back()->with('error', 'Only the creator can start the game.');
         }
 
-        if ($room->game()->where('started', true)->exists()) {
+        if ($room->games()->where('started', true)->exists()) {
             return redirect()->route('games.show', $room);
         }
 
@@ -63,7 +63,7 @@ class GameController extends Controller
 
         $board = app(MinesweeperService::class)->generateBoard($rows, $cols, $mines);
 
-        $game = $room->game()->create([
+        $game = $room->games()->create([
             'difficulty' => $request->input('difficulty', 'easy'),
             'rows' => $rows,
             'cols' => $cols,
@@ -79,7 +79,7 @@ class GameController extends Controller
 
     public function update(Request $request, Room $room)
     {
-        $game = $room->game()->active()->firstOrFail();
+        $game = $room->games()->active()->firstOrFail();
 
         $playerColor = $room->players()->where('user_id', auth()->id())->first()?->pivot->color;
 
@@ -104,7 +104,7 @@ class GameController extends Controller
             return response()->json(['status' => 'error', 'message' => 'Only the creator can restart.'], 403);
         }
 
-        $game = $room->game()->latest()->first();
+        $game = $room->games()->latest()->first();
         if (!$game) {
             return response()->json(['status' => 'error', 'message' => 'No game found.'], 404);
         }

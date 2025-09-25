@@ -61,13 +61,26 @@
          data-rows="{{ $rows }}"
          data-cols="{{ $cols }}"
          data-mines="{{ $mines }}"
-         data-board='@json(json_decode($board))'
+         data-board='@json($board)'
          data-flags='@json($flags)'
          data-revealed='@json($revealed)'
          data-update-url="{{ route('games.update', $room->id) }}"
     </div>
 
     <!-- Load Minesweeper logic -->
+    <script>
+        window.config = {
+            roomId: {{ $room->id }},
+            playerColor: document.getElementById('room-meta').dataset.playerColor,
+            rows: {{ $rows }},
+            cols: {{ $cols }},
+            mines: {{ $mines }},
+            initialBoard: @json(json_decode($board, true)), // ✅ ensure it's a real array in JS
+            savedFlags: @json($flags),
+            savedRevealed: @json($revealed),
+            updateUrl: "{{ route('games.update', $room->id) }}"
+        };
+    </script>
     @vite('resources/js/minesweeper.js')
 
 </x-app-layout>

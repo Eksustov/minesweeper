@@ -74,7 +74,7 @@ class RoomController extends Controller
     {
         $room->load('players', 'creator');
         return view('rooms.show', compact('room'))
-            ->with('activeGame', $room->game()->where('started', true)->latest()->first());
+            ->with('activeGame', $room->games()->where('started', true)->latest()->first());
     }
 
     public function join(Room $room)

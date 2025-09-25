@@ -4,6 +4,7 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class Room extends Model
 {
@@ -21,15 +22,16 @@ class Room extends Model
         return $this->belongsTo(User::class, 'user_id');
     }
 
-    public function game()
+    // Relationship: A room can have many games (history)
+    public function games(): HasMany
     {
-        return $this->hasOne(Game::class);
+        return $this->hasMany(Game::class);
     }
 
     public function players()
     {
         return $this->belongsToMany(User::class, 'room_user')
-                    ->withPivot('color')
-                    ->withTimestamps(); // optional if your pivot has timestamps
+            ->withPivot('color')
+            ->withTimestamps();
     }
 }
