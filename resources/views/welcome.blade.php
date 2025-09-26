@@ -44,38 +44,57 @@
 
     <!-- Available Rooms Card -->
     <div class="bg-white shadow-2xl rounded-2xl p-6 w-full max-w-2xl">
-        <h3 class="text-2xl font-bold mb-4 text-gray-800">Available Rooms</h3>
-        <ul id="roomList" class="space-y-4">
-        @forelse($rooms as $room)
-            <li id="room-{{ $room->id }}" class="p-4 border border-gray-200 rounded-xl flex justify-between items-center hover:shadow-lg transition-shadow duration-300">
-                <div>
-                    <span class="font-semibold text-gray-700">{{ $room->code }}</span>
-                    <span class="text-gray-500 ml-2">({{ ucfirst($room->type) }})</span>
-                    <span class="text-gray-400 ml-2">{{ $room->players->count() }}/{{ $room->max_players }}</span>
-                </div>
+        <h3 class="text-2xl font-bold mb-6 text-gray-800 border-b pb-2">Available Rooms</h3>
 
-                <div class="flex space-x-2">
-                    @if($room->players->contains(auth()->id()))
-                        <form method="GET" action="{{ route('rooms.show', $room) }}">
-                            <button type="submit" class="bg-purple-500 text-white px-4 py-2 rounded-lg hover:bg-purple-600 transition-colors">
-                                Enter Room
-                            </button>
-                        </form>
-                    @elseif($room->players->count() < $room->max_players)
-                        <form method="POST" action="{{ route('rooms.join', $room) }}">
-                            @csrf
-                            <button type="submit" class="bg-green-500 text-white px-4 py-2 rounded-lg hover:bg-green-600 transition-colors">
-                                Join Room
-                            </button>
-                        </form>
-                    @else
-                        <span class="text-red-500 font-semibold">Room is full</span>
-                    @endif
-                </div>
-            </li>
-        @empty
-            <li class="text-gray-400 text-center py-4">No active rooms right now.</li>
-        @endforelse
+        <ul id="roomList" class="space-y-4">
+            @forelse($rooms as $room)
+                <li id="room-{{ $room->id }}"
+                    class="relative group p-5 border border-gray-200 rounded-xl flex justify-between items-center
+                        hover:shadow-xl transition duration-300 ease-in-out hover:-translate-y-1">
+
+                    <!-- Gradient border hover glow -->
+                    <span class="absolute inset-0 rounded-xl bg-gradient-to-r from-indigo-500 to-purple-500 opacity-0 group-hover:opacity-100 blur-md transition duration-500"></span>
+                    <span class="absolute inset-0 rounded-xl bg-white"></span>
+
+                    <!-- Content -->
+                    <div class="relative flex flex-col">
+                        <span class="font-semibold text-gray-800 text-lg">{{ $room->code }}</span>
+                        <div class="flex items-center mt-1 space-x-2">
+                            <span class="px-2 py-0.5 rounded-full text-xs font-medium
+                                        {{ $room->type === 'private' ? 'bg-purple-100 text-purple-700' : 'bg-green-100 text-green-700' }}">
+                                {{ ucfirst($room->type) }}
+                            </span>
+                            <span class="px-2 py-0.5 rounded-full bg-gray-100 text-gray-600 text-xs font-medium">
+                                {{ $room->players->count() }}/{{ $room->max_players }} players
+                            </span>
+                        </div>
+                    </div>
+
+                    <!-- Actions -->
+                    <div class="relative flex space-x-2">
+                        @if($room->players->contains(auth()->id()))
+                            <form method="GET" action="{{ route('rooms.show', $room) }}">
+                                <button type="submit"
+                                    class="bg-purple-500 text-white px-4 py-2 rounded-lg hover:bg-purple-600 transition-colors shadow-md hover:shadow-lg">
+                                    Enter
+                                </button>
+                            </form>
+                        @elseif($room->players->count() < $room->max_players)
+                            <form method="POST" action="{{ route('rooms.join', $room) }}">
+                                @csrf
+                                <button type="submit"
+                                    class="bg-green-500 text-white px-4 py-2 rounded-lg hover:bg-green-600 transition-colors shadow-md hover:shadow-lg">
+                                    Join
+                                </button>
+                            </form>
+                        @else
+                            <span class="text-red-500 font-semibold">Room is full</span>
+                        @endif
+                    </div>
+                </li>
+            @empty
+                <li class="text-gray-400 text-center py-6 italic">No active rooms right now.</li>
+            @endforelse
         </ul>
     </div>
 </div>
@@ -88,7 +107,6 @@ document.addEventListener('DOMContentLoaded', () => {
 
     const publicGradient = 'linear-gradient(to right, #6366f1, #8b5cf6)';
     const privateGradient = 'linear-gradient(to right, #6b21a8, #4c1d95)';
-    const hoverGradient = 'linear-gradient(to right, #7c3aed, #9333ea)';
 
     function updateCardColor() {
         if (select.value === 'private') {
@@ -114,45 +132,59 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Fetch rooms
     async function fetchRooms() {
-        const res = await fetch('/rooms/json');
-        const rooms = await res.json();
+        try {
+            const res = await fetch('/rooms/json', {
+                headers: {
+                    'Accept': 'application/json'
+                }
+            });
 
-        roomList.innerHTML = '';
-
-        if (rooms.length === 0) {
-            roomList.innerHTML = '<li class="text-gray-500">No active rooms right now.</li>';
-            return;
-        }
-
-        rooms.forEach(room => {
-            const li = document.createElement('li');
-            li.id = `room-${room.id}`;
-            li.classList.add('mb-2', 'p-2', 'border', 'rounded', 'flex', 'justify-between', 'items-center');
-
-            let buttonHTML = '';
-
-            if (room.isInRoom) {
-                buttonHTML = `
-                    <form method="GET" action="/rooms/${room.id}">
-                        <button type="submit" class="bg-purple-500 text-white px-4 py-2 rounded hover:bg-purple-600">
-                            Enter Room
-                        </button>
-                    </form>`;
-            } else if (room.current_players < room.max_players) {
-                buttonHTML = `
-                    <form method="POST" action="/rooms/${room.id}/join">
-                        @csrf
-                        <button type="submit" class="bg-green-500 text-white px-2 py-1 rounded hover:bg-green-600">
-                            Join Room
-                        </button>
-                    </form>`;
-            } else {
-                buttonHTML = `<span class="text-red-500">Room is full</span>`;
+            if (!res.ok) {
+                console.error('Failed to fetch rooms:', res.status);
+                return;
             }
 
-            li.innerHTML = `<span>${room.code} (${room.type.charAt(0).toUpperCase() + room.type.slice(1)}) — ${room.current_players}/${room.max_players}</span>${buttonHTML}`;
-            roomList.appendChild(li);
-        });
+            const rooms = await res.json();
+
+            roomList.innerHTML = '';
+
+            if (rooms.length === 0) {
+                roomList.innerHTML = '<li class="text-gray-500">No active rooms right now.</li>';
+                return;
+            }
+
+            rooms.forEach(room => {
+                const li = document.createElement('li');
+                li.id = `room-${room.id}`;
+                li.classList.add('mb-2', 'p-2', 'border', 'rounded', 'flex', 'justify-between', 'items-center');
+
+                let buttonHTML = '';
+
+                if (room.isInRoom) {
+                    buttonHTML = `
+                        <form method="GET" action="/rooms/${room.id}">
+                            <button type="submit" class="bg-purple-500 text-white px-4 py-2 rounded hover:bg-purple-600">
+                                Enter Room
+                            </button>
+                        </form>`;
+                } else if (room.current_players < room.max_players) {
+                    buttonHTML = `
+                        <form method="POST" action="/rooms/${room.id}/join">
+                            @csrf
+                            <button type="submit" class="bg-green-500 text-white px-2 py-1 rounded hover:bg-green-600">
+                                Join Room
+                            </button>
+                        </form>`;
+                } else {
+                    buttonHTML = `<span class="text-red-500">Room is full</span>`;
+                }
+
+                li.innerHTML = `<span>${room.code} (${room.type.charAt(0).toUpperCase() + room.type.slice(1)}) — ${room.current_players}/${room.max_players}</span>${buttonHTML}`;
+                roomList.appendChild(li);
+            });
+        } catch (error) {
+            console.error('Error fetching rooms:', error);
+        }
     }
 
     fetchRooms();

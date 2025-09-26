@@ -23,21 +23,23 @@
         ])
     </head>
     <body class="font-sans antialiased">
-        <div class="min-h-screen bg-gradient-to-r from-transparent to-gray-500">
+        <div class="min-h-screen bg-gradient-to-br from-gray-900 via-gray-800 to-gray-700">
             @include('layouts.navigation')
 
             <!-- Page Heading -->
             @isset($header)
-                <header class="bg-white shadow">
-                    <div class="max-w-7xl mx-auto py-6 px-4 sm:px-6 lg:px-8">
+                <header class="bg-gray-900/80 backdrop-blur-md shadow-md border-b border-gray-700">
+                    <div class="max-w-7xl mx-auto py-6 px-4 sm:px-6 lg:px-8 text-white">
                         {{ $header }}
                     </div>
                 </header>
             @endisset
 
             <!-- Page Content -->
-            <main>
-                {{ $slot }}
+            <main class="flex justify-center items-center py-10">
+                <div class="w-full max-w-4xl">
+                    {{ $slot }}
+                </div>
             </main>
         </div>
     </body>
