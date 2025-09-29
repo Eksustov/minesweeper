@@ -1,11 +1,5 @@
 @section('title', $room->code)
 <x-app-layout>
-    <x-slot name="header">
-        <h2 class="font-semibold text-xl text-gray-800 leading-tight">
-            {{ __('Minesweeper') }}
-        </h2>
-    </x-slot>
-
     <div class="py-12 flex flex-col items-center space-y-4">
         <div class="bg-white shadow-md rounded-lg p-6 w-full max-w-[95vw] flex">
             
