@@ -322,6 +322,7 @@ export default function initMinesweeper(config) {
     }
 
     // Boot game
+    console.log("initGame running with", rows, cols, mines, initialBoard);
     initGame();
     setupEcho();
     setupRestartButton();

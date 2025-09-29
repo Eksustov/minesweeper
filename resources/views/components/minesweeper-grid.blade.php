@@ -29,6 +29,8 @@
     <script type="module">
         import initMinesweeper from "/resources/js/minesweeper.js";
 
+        console.log(@json($config));
+        initMinesweeper(@json($config));
         initMinesweeper({
             rows: {{ $rows }},
             cols: {{ $cols }},
