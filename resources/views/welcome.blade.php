@@ -117,10 +117,6 @@ document.addEventListener('DOMContentLoaded', () => {
     // Change background when select changes
     select.addEventListener('change', updateCardColor);
 
-    // Add hover effect
-    card.addEventListener('mouseenter', () => {
-        card.style.background = hoverGradient;
-    });
     card.addEventListener('mouseleave', () => {
         updateCardColor();
     });

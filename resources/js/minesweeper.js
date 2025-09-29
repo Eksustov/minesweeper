@@ -46,10 +46,21 @@ export default function initMinesweeper(config) {
         for (let r = 0; r < rows; r++) {
             board[r] = [];
             for (let c = 0; c < cols; c++) {
-                const sourceCell = initialBoard[r][c] ?? { mine: false, count: 0 };
+                const raw = initialBoard[r][c];
+                let sourceCell;
+
+                // If backend only gives numbers, wrap them in an object
+                if (typeof raw === "number") {
+                    sourceCell = { mine: false, count: raw };
+                } else if (raw && typeof raw === "object") {
+                    sourceCell = raw;
+                } else {
+                    sourceCell = { mine: false, count: 0 };
+                }
+
                 board[r][c] = {
-                    mine: sourceCell.mine,
-                    count: sourceCell.count,
+                    mine: !!sourceCell.mine,
+                    count: sourceCell.count ?? 0,
                     row: r,
                     col: c,
                     element: null,
@@ -322,7 +333,6 @@ export default function initMinesweeper(config) {
     }
 
     // Boot game
-    console.log("initGame running with", rows, cols, mines, initialBoard);
     initGame();
     setupEcho();
     setupRestartButton();

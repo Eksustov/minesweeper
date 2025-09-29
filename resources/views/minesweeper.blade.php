@@ -7,6 +7,10 @@
             <div class="flex-1">
                 <h1 class="text-2xl font-bold mb-4">Minesweeper</h1>
 
+                <pre>
+{{ print_r(json_decode($board, true)) }}
+</pre>
+
                 <div class="flex justify-between items-center mb-4">
                     <div id="mineCounter" class="text-lg font-bold text-gray-700">Mines: 0</div>
                     <div id="statusMessage" class="text-lg font-bold text-green-600"></div>
@@ -74,6 +78,7 @@
             savedRevealed: @json($revealed),
             updateUrl: "{{ route('games.update', $room->id) }}"
         };
+        console.log("Minesweeper config:", window.config);
     </script>
     @vite('resources/js/minesweeper.js')
 
