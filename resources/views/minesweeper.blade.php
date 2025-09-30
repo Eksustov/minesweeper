@@ -7,17 +7,13 @@
             <div class="flex-1">
                 <h1 class="text-2xl font-bold mb-4">Minesweeper</h1>
 
-                <pre>
-{{ print_r(json_decode($board, true)) }}
-</pre>
-
                 <div class="flex justify-between items-center mb-4">
                     <div id="mineCounter" class="text-lg font-bold text-gray-700">Mines: 0</div>
                     <div id="statusMessage" class="text-lg font-bold text-green-600"></div>
                 </div>
 
                 <div class="flex justify-center">
-                    <div id="game" class="grid gap-1"></div>
+                    <div id="board" class="grid gap-1"></div>
                 </div>
 
                 <div class="mt-4 flex space-x-2">
@@ -73,7 +69,8 @@
             rows: {{ $rows }},
             cols: {{ $cols }},
             mines: {{ $mines }},
-            initialBoard: @json(json_decode($board, true)), // ✅ ensure it's a real array in JS
+            // $board is now a PHP array in controllers; this safely serializes it to JS
+            initialBoard: @json($board),
             savedFlags: @json($flags),
             savedRevealed: @json($revealed),
             updateUrl: "{{ route('games.update', $room->id) }}"

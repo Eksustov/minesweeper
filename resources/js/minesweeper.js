@@ -19,7 +19,7 @@ export default function initMinesweeper(config) {
     } = config;
 
     // DOM references
-    const gameContainer = document.getElementById("game");
+    const gameContainer = document.getElementById("board");
     const mineCounter = document.getElementById("mineCounter");
     const statusMessage = document.getElementById("statusMessage");
     const restartBtn = document.getElementById("restartBtn");
@@ -36,7 +36,9 @@ export default function initMinesweeper(config) {
      * Initialize/reset the game board
      */
     function initGame() {
+        gameContainer.style.display = "grid";
         gameContainer.style.gridTemplateColumns = `repeat(${cols}, 3rem)`;
+        gameContainer.style.gridTemplateRows = `repeat(${rows}, 3rem)`;
         gameContainer.innerHTML = "";
         board = [];
         flagsPlaced = 0;
@@ -336,4 +338,12 @@ export default function initMinesweeper(config) {
     initGame();
     setupEcho();
     setupRestartButton();
+}
+
+if (typeof window !== "undefined") {
+    window.addEventListener("DOMContentLoaded", () => {
+        if (window.config) {
+            initMinesweeper(window.config);
+        }
+    });
 }

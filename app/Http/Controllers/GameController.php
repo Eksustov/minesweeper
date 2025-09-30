@@ -18,7 +18,8 @@ class GameController extends Controller
         $mines = 10;
 
         // Build initial board (or load from DB if already saved)
-        $board = json_encode(array_fill(0, $rows, array_fill(0, $cols, 0)));
+        $board = array_fill(0, $rows, array_fill(0, $cols, 0));
+
         $flags = [];
         $revealed = [];
 
@@ -79,13 +80,21 @@ class GameController extends Controller
 
     public function update(Request $request, Room $room)
     {
-        $game = $room->games()->active()->firstOrFail();
+        // make sure a game exists for this room
+        $game = $room->games()->where('started', true)->latest()->first();
 
-        $playerColor = $room->players()->where('user_id', auth()->id())->first()?->pivot->color;
+        if (! $game) {
+            return response()->json(['error' => 'No active game found'], 404);
+        }
 
-        app(MinesweeperService::class)->updateTile($game, $request, $playerColor);
+        $playerColor = $room->players()
+            ->where('user_id', auth()->id())
+            ->first()?->pivot->color;
 
-        broadcast(new TileUpdated(
+        app(\App\Services\MinesweeperService::class)
+            ->updateTile($game, $request, $playerColor);
+
+        broadcast(new \App\Events\TileUpdated(
             $room->id,
             $request->row,
             $request->col,
