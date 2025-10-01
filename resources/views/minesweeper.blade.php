@@ -17,11 +17,12 @@
                 </div>
 
                 <div class="mt-4 flex space-x-2">
-                    <button id="restartBtn" class="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600">
-                        Restart
-                    </button>
-                    <a href="{{ route('rooms.show', $room->id) }}" 
-                       class="px-4 py-2 bg-gray-500 text-white rounded hover:bg-gray-600">
+                    @if(auth()->id() === $room->creator->id)
+                        <button id="restartBtn" class="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600">
+                            Restart
+                        </button>
+                    @endif
+                    <a href="{{ route('rooms.show', $room->id) }}" class="px-4 py-2 bg-gray-500 text-white rounded hover:bg-gray-600">
                         Back to Room
                     </a>
                 </div>
@@ -33,8 +34,7 @@
                 <ul id="playerList">
                     @foreach ($room->players as $player)
                         <li id="player-{{ $player->id }}" class="flex items-center space-x-2 mb-1">
-                            <span class="inline-block w-4 h-4 rounded" 
-                                  style="background-color: {{ $player->pivot->color }}"></span>
+                            <span class="inline-block w-4 h-4 rounded" style="background-color: {{ $player->pivot->color }}"></span>
                             <span>
                                 {{ $player->name }}
                                 @if ($player->id === $room->creator->id)
@@ -48,35 +48,21 @@
         </div>
     </div>
 
-    <!-- Initial game data -->
-    <div id="room-meta"
-         data-room-id="{{ $room->id }}"
-         data-player-color="{{ $room->players->find(auth()->id())?->pivot->color ?? '#000000' }}"
-         data-rows="{{ $rows }}"
-         data-cols="{{ $cols }}"
-         data-mines="{{ $mines }}"
-         data-board='@json($board)'
-         data-flags='@json($flags)'
-         data-revealed='@json($revealed)'
-         data-update-url="{{ route('games.update', $room->id) }}"
-    </div>
-
-    <!-- Load Minesweeper logic -->
+    <!-- Game configuration -->
     <script>
         window.config = {
             roomId: {{ $room->id }},
-            playerColor: document.getElementById('room-meta').dataset.playerColor,
+            playerColor: "{{ $room->players->find(auth()->id())?->pivot->color ?? '#000000' }}",
             rows: {{ $rows }},
             cols: {{ $cols }},
             mines: {{ $mines }},
-            // $board is now a PHP array in controllers; this safely serializes it to JS
-            initialBoard: @json($board),
-            savedFlags: @json($flags),
-            savedRevealed: @json($revealed),
-            updateUrl: "{{ route('games.update', $room->id) }}"
+            initialBoard: @json($board),       // ✅ array, not double-encoded
+            savedFlags: @json($flags ?? []),
+            savedRevealed: @json($revealed ?? []),
+            updateUrl: "{{ route('games.update', $room->id) }}",
+            restartUrl: "{{ route('games.restart', $room->id) }}"
         };
-        console.log("Minesweeper config:", window.config);
     </script>
-    @vite('resources/js/minesweeper.js')
 
+    @vite('resources/js/minesweeper.js')
 </x-app-layout>
