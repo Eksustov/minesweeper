@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\Room;
+use App\Models\Game;
 use Illuminate\Http\Request;
 use App\Events\{GameStarted, GameUpdated, TileUpdated};
 use App\Services\MinesweeperService;
@@ -10,27 +11,46 @@ use App\Services\MinesweeperService;
 class GameController extends Controller
 {
 
+    protected $minesweeperService;
+
+    public function __construct(MinesweeperService $minesweeperService)
+    {
+        $this->minesweeperService = $minesweeperService;
+    }
+
     public function game(Room $room)
     {
-        // Example: set default game board config (easy mode)
-        $rows = 9;
-        $cols = 9;
-        $mines = 10;
+        $game = $room->games()->where('started', true)->latest()->first();
 
-        // Build initial board (or load from DB if already saved)
-        $board = array_fill(0, $rows, array_fill(0, $cols, 0));
+        if (!$game) {
+            // No game exists yet — generate and save
+            [$rows, $cols, $mines] = [9, 9, 10]; // default easy mode
+            $board = $this->minesweeperService->generateBoard($rows, $cols, $mines);
 
-        $flags = [];
-        $revealed = [];
+            $game = $room->games()->create([
+                'difficulty' => 'easy',
+                'rows' => $rows,
+                'cols' => $cols,
+                'mines' => $mines,
+                'board' => json_encode($board),
+                'started' => true,
+            ]);
+        } else {
+            $board = $game->board; // already cast to array
+            $rows = $game->rows;
+            $cols = $game->cols;
+            $mines = $game->mines;
+        }
 
         return view('minesweeper', [
             'room' => $room,
+            'game' => $game,
             'rows' => $rows,
             'cols' => $cols,
             'mines' => $mines,
             'board' => $board,
-            'flags' => $flags,
-            'revealed' => $revealed,
+            'flags' => $game->flags ? json_decode($game->flags, true) : [],
+            'revealed' => $game->revealed ? json_decode($game->revealed, true) : [],
         ]);
     }
 
@@ -80,32 +100,30 @@ class GameController extends Controller
 
     public function update(Request $request, Room $room)
     {
-        // make sure a game exists for this room
-        $game = $room->games()->where('started', true)->latest()->first();
-
-        if (! $game) {
-            return response()->json(['error' => 'No active game found'], 404);
+        $row = $request->input('row');
+        $col = $request->input('col');
+    
+        \Log::info("Tile clicked:", ['row' => $row, 'col' => $col]);
+    
+        $game = $room->games()->where('started', true)->latest()->firstOrFail();
+    
+        // Decode board JSON if needed
+        $board = is_array($game->board) ? $game->board : json_decode($game->board, true);
+    
+        if (!isset($board[$row][$col])) {
+            \Log::error("Board dimensions:", ['rows' => count($board), 'cols' => count($board[0] ?? [])]);
+            throw new \Exception("Invalid tile coordinates");
         }
-
-        $playerColor = $room->players()
-            ->where('user_id', auth()->id())
-            ->first()?->pivot->color;
-
-        app(\App\Services\MinesweeperService::class)
-            ->updateTile($game, $request, $playerColor);
-
-        broadcast(new \App\Events\TileUpdated(
-            $room->id,
-            $request->row,
-            $request->col,
-            $request->action,
-            $request->value,
-            (bool) $request->gameOver,
-            $playerColor
-        ))->toOthers();
-
-        return response()->json(['status' => 'ok']);
-    }
+    
+        // Reveal tile
+        $board[$row][$col]['revealed'] = true;
+    
+        // Save back
+        $game->board = $board;
+        $game->save();
+    
+        return response()->json(['board' => $board]);
+    }    
 
     public function restart(Room $room)
     {

@@ -36,6 +36,7 @@ export default function initMinesweeper(config) {
      * Initialize/reset the game board
      */
     function initGame() {
+        // Setup grid
         gameContainer.style.display = "grid";
         gameContainer.style.gridTemplateColumns = `repeat(${cols}, 3rem)`;
         gameContainer.style.gridTemplateRows = `repeat(${rows}, 3rem)`;
@@ -44,14 +45,14 @@ export default function initMinesweeper(config) {
         flagsPlaced = 0;
         gameOver = false;
         statusMessage.textContent = "";
-
+    
         for (let r = 0; r < rows; r++) {
             board[r] = [];
             for (let c = 0; c < cols; c++) {
                 const raw = initialBoard[r][c];
                 let sourceCell;
-
-                // If backend only gives numbers, wrap them in an object
+    
+                // Convert backend data to proper object
                 if (typeof raw === "number") {
                     sourceCell = { mine: false, count: raw };
                 } else if (raw && typeof raw === "object") {
@@ -59,7 +60,7 @@ export default function initMinesweeper(config) {
                 } else {
                     sourceCell = { mine: false, count: 0 };
                 }
-
+    
                 board[r][c] = {
                     mine: !!sourceCell.mine,
                     count: sourceCell.count ?? 0,
@@ -68,11 +69,12 @@ export default function initMinesweeper(config) {
                     element: null,
                     revealed: false,
                     flagged: false,
-                    flagColor: null
+                    flagColor: null,
                 };
             }
         }
-
+    
+        // Build buttons and restore state
         for (let r = 0; r < rows; r++) {
             for (let c = 0; c < cols; c++) {
                 const btn = document.createElement("button");
@@ -80,17 +82,20 @@ export default function initMinesweeper(config) {
                     "w-12 h-12 bg-gray-300 rounded flex items-center justify-center text-sm font-bold";
                 btn.dataset.row = r;
                 btn.dataset.col = c;
-
+    
+                // Events
                 btn.addEventListener("click", () => reveal(r, c));
                 btn.addEventListener("contextmenu", (e) => {
                     e.preventDefault();
                     toggleFlag(r, c);
                 });
-
+    
                 gameContainer.appendChild(btn);
                 board[r][c].element = btn;
-
+    
                 const key = `${r}-${c}`;
+    
+                // Restore flagged tiles
                 if (savedFlags && savedFlags[key]) {
                     board[r][c].flagged = true;
                     board[r][c].flagColor = savedFlags[key];
@@ -98,13 +103,14 @@ export default function initMinesweeper(config) {
                     btn.textContent = "🚩";
                     btn.style.backgroundColor = board[r][c].flagColor;
                 }
-
+    
+                // Restore revealed tiles
                 if (savedRevealed && savedRevealed[key]) {
                     revealCell(r, c, true);
                 }
             }
         }
-
+    
         updateMineCounter();
     }
 
@@ -143,39 +149,35 @@ export default function initMinesweeper(config) {
 
     function reveal(r, c) {
         if (gameOver) return;
+        if (!board[r] || !board[r][c]) return;
+    
         const toReveal = floodRevealCollect(r, c);
         if (!toReveal.length) return;
-
+    
         toReveal.forEach(({ row, col }) => revealCell(row, col));
-
+    
         if (toReveal.some(x => board[x.row][x.col].mine)) {
-            // Game over
             gameOver = true;
             statusMessage.textContent = "Game Over!";
             board.flat().forEach(cell => {
                 if (cell.mine && !cell.revealed) revealCell(cell.row, cell.col);
                 if (cell.element) cell.element.disabled = true;
             });
-
-            axios.post(updateUrl, {
-                roomId: roomId,
-                action: "reveal",
-                value: toReveal,
-                gameOver: true
-            }).catch(err => console.error("reveal update failed", err));
-
-            return;
         }
-
-        // Normal reveal
+    
+        // Send only the first tile so backend gets row & col
+        const firstTile = toReveal[0];
         axios.post(updateUrl, {
             roomId: roomId,
-            action: "reveal",
-            value: toReveal
+            row: firstTile.row,
+            col: firstTile.col,
+            action: "reveal"
         }).catch(err => console.error("reveal update failed", err));
-
+    
         checkWin();
     }
+    
+    
 
     function floodRevealCollect(sr, sc) {
         const queue = [{ r: sr, c: sc }];

@@ -1,6 +1,7 @@
 <?php
 
 namespace App\Services;
+use App\Models\Game;
 
 class MinesweeperService
 {
@@ -64,4 +65,23 @@ class MinesweeperService
 
         return $board;
     }
+
+    public function updateTile(Game $game, int $row, int $col): array
+    {
+        $board = $game->board;
+
+        if (!isset($board[$row][$col])) {
+            throw new \Exception("Invalid tile coordinates");
+        }
+
+        // Reveal the tile
+        $board[$row][$col]['revealed'] = true;
+
+        // Save board back
+        $game->board = $board;
+        $game->save();
+
+        return $board;
+    }
+
 }

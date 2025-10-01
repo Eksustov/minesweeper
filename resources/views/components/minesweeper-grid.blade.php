@@ -9,7 +9,7 @@
 
     <!-- Grid -->
     <div class="flex justify-center">
-        <div id="game" class="grid gap-1"></div>
+        <div id="board" class="grid gap-1"></div>
     </div>
 
     <!-- Buttons -->

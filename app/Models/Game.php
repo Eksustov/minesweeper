@@ -17,7 +17,7 @@ class Game extends Model
     ];
 
     protected $casts = [
-        'board' => 'array',  // automatically converts JSON <-> array
+        'board' => 'json',
     ];
 
     public function room()
