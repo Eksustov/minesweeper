@@ -18,7 +18,8 @@
 
                 <div class="mt-4 flex space-x-2">
                     @if(auth()->id() === $room->creator->id)
-                        <button id="restartBtn" class="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600">
+                        <button id="restartBtn" type="button"
+                            class="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600">
                             Restart
                         </button>
                     @endif

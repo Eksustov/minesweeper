@@ -312,7 +312,7 @@ export default function initMinesweeper(config) {
      */
     function setupRestartButton() {
         restartBtn.addEventListener("click", () => {
-            axios.post(`/rooms/${roomId}/restart`)
+            axios.post(config.restartUrl)
                 .then(res => {
                     if (res.data?.status !== "ok")
                         throw new Error(res.data?.message || "Failed to restart");
