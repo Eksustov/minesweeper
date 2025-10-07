@@ -46,35 +46,26 @@ export default function initMinesweeper(config) {
         gameOver = false;
         statusMessage.textContent = "";
     
+        // ✅ 1. Build board structure first from initialBoard
         for (let r = 0; r < rows; r++) {
             board[r] = [];
             for (let c = 0; c < cols; c++) {
-                const raw = initialBoard[r][c];
-                let sourceCell;
-    
-                // Convert backend data to proper object
-                if (typeof raw === "number") {
-                    sourceCell = { mine: false, count: raw };
-                } else if (raw && typeof raw === "object") {
-                    sourceCell = raw;
-                } else {
-                    sourceCell = { mine: false, count: 0 };
-                }
-    
+                const sourceCell =
+                    initialBoard?.[r]?.[c] || { mine: false, count: 0, revealed: false };
                 board[r][c] = {
-                    mine: !!sourceCell.mine,
-                    count: sourceCell.count ?? 0,
                     row: r,
                     col: c,
+                    mine: !!sourceCell.mine,
+                    count: sourceCell.count ?? 0,
+                    revealed: !!sourceCell.revealed,
+                    flagged: !!sourceCell.flagged,
+                    flagColor: sourceCell.flagColor || null,
                     element: null,
-                    revealed: false,
-                    flagged: false,
-                    flagColor: null,
                 };
             }
         }
     
-        // Build buttons and restore state
+        // ✅ 2. Now build buttons and attach them to board[r][c]
         for (let r = 0; r < rows; r++) {
             for (let c = 0; c < cols; c++) {
                 const btn = document.createElement("button");
@@ -83,7 +74,6 @@ export default function initMinesweeper(config) {
                 btn.dataset.row = r;
                 btn.dataset.col = c;
     
-                // Events
                 btn.addEventListener("click", () => reveal(r, c));
                 btn.addEventListener("contextmenu", (e) => {
                     e.preventDefault();
@@ -95,8 +85,13 @@ export default function initMinesweeper(config) {
     
                 const key = `${r}-${c}`;
     
-                // Restore flagged tiles
-                if (savedFlags && savedFlags[key]) {
+                // Restore flags
+                if (board[r][c].flagged) {
+                    flagsPlaced++;
+                    btn.textContent = "🚩";
+                    if (board[r][c].flagColor)
+                        btn.style.backgroundColor = board[r][c].flagColor;
+                } else if (savedFlags && savedFlags[key]) {
                     board[r][c].flagged = true;
                     board[r][c].flagColor = savedFlags[key];
                     flagsPlaced++;
@@ -104,8 +99,11 @@ export default function initMinesweeper(config) {
                     btn.style.backgroundColor = board[r][c].flagColor;
                 }
     
-                // Restore revealed tiles
-                if (savedRevealed && savedRevealed[key]) {
+                // Restore revealed
+                if (board[r][c].revealed) {
+                    revealCell(r, c, true);
+                } else if (savedRevealed && savedRevealed[key]) {
+                    board[r][c].revealed = true;
                     revealCell(r, c, true);
                 }
             }
@@ -113,6 +111,7 @@ export default function initMinesweeper(config) {
     
         updateMineCounter();
     }
+    
 
     function updateMineCounter() {
         mineCounter.textContent = `Mines: ${mines - flagsPlaced}`;
@@ -311,21 +310,23 @@ export default function initMinesweeper(config) {
      * Restart handler
      */
     function setupRestartButton() {
+        if (!restartBtn) return; // ✅ Skip if player is not the creator
+    
         restartBtn.addEventListener("click", () => {
             axios.post(config.restartUrl)
                 .then(res => {
                     if (res.data?.status !== "ok")
                         throw new Error(res.data?.message || "Failed to restart");
-
+    
                     if (res.data.board) {
                         initialBoard = res.data.board;
                         rows = res.data.rows ?? rows;
                         cols = res.data.cols ?? cols;
                         mines = res.data.mines ?? mines;
-
+    
                         savedFlags = {};
                         savedRevealed = {};
-
+    
                         initGame();
                     }
                 })
@@ -335,6 +336,7 @@ export default function initMinesweeper(config) {
                 });
         });
     }
+    
 
     // Boot game
     initGame();

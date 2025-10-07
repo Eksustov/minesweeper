@@ -18,10 +18,12 @@
 
                 <div class="mt-4 flex space-x-2">
                     @if(auth()->id() === $room->creator->id)
-                        <button id="restartBtn" type="button"
-                            class="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600">
-                            Restart
-                        </button>
+                    <button
+                        id="restartBtn"
+                        class="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600 transition"
+                    >
+                        Restart Game
+                    </button>
                     @endif
                     <a href="{{ route('rooms.show', $room->id) }}" class="px-4 py-2 bg-gray-500 text-white rounded hover:bg-gray-600">
                         Back to Room

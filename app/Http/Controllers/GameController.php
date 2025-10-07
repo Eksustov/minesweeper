@@ -121,6 +121,17 @@ class GameController extends Controller
         // Save back
         $game->board = $board;
         $game->save();
+
+        broadcast(new TileUpdated(
+            $room->id,
+            $row,
+            $col,
+            'reveal',
+            $board[$row][$col],
+            auth()->user()->name ?? 'unknown',
+            false
+        ))->toOthers();
+        
     
         return response()->json(['board' => $board]);
     }    
