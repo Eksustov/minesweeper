@@ -99,11 +99,13 @@ export default function initMinesweeper(config) {
                 }
     
                 // Restore revealed
-                if (board[r][c].revealed) {
-                    revealCell(r, c, true);
-                } else if (savedRevealed && savedRevealed[key]) {
-                    board[r][c].revealed = true;
-                    revealCell(r, c, true);
+                if (!board[r][c].flagged) {
+                    if (board[r][c].revealed) {
+                        revealCell(r, c, true);
+                    } else if (savedRevealed && savedRevealed[key]) {
+                        board[r][c].revealed = true;
+                        revealCell(r, c, true);
+                    }
                 }
             }
         }
@@ -275,18 +277,21 @@ export default function initMinesweeper(config) {
                 (e.value || []).forEach(({ row, col, mine, count }) => {
                     const cell = board[row]?.[col];
                     if (!cell || cell.revealed) return;
+            
+                    // 🚫 Do not reveal if currently flagged on this client
+                    if (cell.flagged) return;
+            
                     if (typeof mine !== "undefined") cell.mine = !!mine;
                     if (typeof count !== "undefined") cell.count = count;
                     revealCell(row, col, true);
                 });
+            
                 if (e.gameOver) {
                     gameOver = true;
                     statusMessage.textContent = "Game Over!";
-                    board.flat().forEach(c => {
-                        if (c.element) c.element.disabled = true;
-                    });
+                    board.flat().forEach(c => { if (c.element) c.element.disabled = true; });
                 }
-            }
+            }            
         });
 
         channel.listen(".GameStarted", (e) => {

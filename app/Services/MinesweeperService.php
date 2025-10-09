@@ -84,42 +84,46 @@ class MinesweeperService
         return $board;
     }
 
-    public function collectReveal(array $board, int $rows, int $cols, int $r, int $c): array
+    public function collectReveal(array $board, int $rows, int $cols, int $r, int $c, array $flagSet = []): array
     {
-        if (!isset($board[$r][$c])) return ['cells'=>[], 'hitMine'=>false];
+        // If starting tile is flagged, do nothing
+        if (isset($flagSet["{$r}-{$c}"])) {
+            return ['cells' => [], 'hitMine' => false];
+        }
 
         $queue = [[$r,$c]];
-        $visited = array_fill(0,$rows,array_fill(0,$cols,false));
+        $visited = array_fill(0, $rows, array_fill(0, $cols, false));
         $out = [];
         $hitMine = false;
 
         while ($queue) {
             [$cr,$cc] = array_shift($queue);
-            if ($cr<0 || $cc<0 || $cr>=$rows || $cc>=$cols) continue;
+            if ($cr < 0 || $cc < 0 || $cr >= $rows || $cc >= $cols) continue;
             if ($visited[$cr][$cc]) continue;
-
             $visited[$cr][$cc] = true;
+
+            // Skip flagged cells entirely
+            if (isset($flagSet["{$cr}-{$cc}"])) continue;
 
             $cell = $board[$cr][$cc] ?? null;
             if (!$cell) continue;
 
-            $out[] = [
-                'row' => $cr, 'col' => $cc,
-                'mine' => (bool)($cell['mine'] ?? false),
-                'count' => (int)($cell['count'] ?? 0),
-            ];
+            $mine  = !empty($cell['mine']);
+            $count = (int)($cell['count'] ?? 0);
 
-            if (!empty($cell['mine'])) {
+            $out[] = ['row'=>$cr,'col'=>$cc,'mine'=>$mine,'count'=>$count];
+
+            if ($mine) {
                 $hitMine = true;
                 // don't expand past a mine
                 continue;
             }
 
-            if ((int)($cell['count'] ?? 0) === 0) {
-                for ($dr=-1;$dr<=1;$dr++) {
-                    for ($dc=-1;$dc<=1;$dc++) {
+            if ($count === 0) {
+                for ($dr=-1; $dr<=1; $dr++) {
+                    for ($dc=-1; $dc<=1; $dc++) {
                         if ($dr===0 && $dc===0) continue;
-                        $nr=$cr+$dr; $nc=$cc+$dc;
+                        $nr = $cr + $dr; $nc = $cc + $dc;
                         if ($nr>=0 && $nc>=0 && $nr<$rows && $nc<$cols && !$visited[$nr][$nc]) {
                             $queue[] = [$nr,$nc];
                         }
