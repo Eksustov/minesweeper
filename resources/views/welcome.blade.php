@@ -105,75 +105,136 @@
             const privateGradient = 'linear-gradient(to right, #6b21a8, #4c1d95)';
 
             function updateCardColor() {
-                if (select.value === 'private') {
-                    card.style.background = privateGradient;
+                card.style.background = (select.value === 'private') ? privateGradient : publicGradient;
+            }
+            updateCardColor();
+            select.addEventListener('change', updateCardColor);
+            card.addEventListener('mouseleave', updateCardColor);
+
+            // --- helpers ---
+            const cap = s => s.charAt(0).toUpperCase() + s.slice(1);
+
+            function renderRoomItem(room) {
+                const isPrivate = room.type === 'private';
+                const badgeCls = isPrivate
+                    ? 'bg-purple-100 text-purple-700'
+                    : 'bg-green-100 text-green-700';
+
+                // Actions (Enter / Join / Full)
+                let actionsHTML = '';
+                if (room.isInRoom) {
+                    actionsHTML = `
+                        <form method="GET" action="/rooms/${room.id}">
+                            <button type="submit"
+                                class="bg-purple-500 text-white px-4 py-2 rounded-lg hover:bg-purple-600 transition-colors shadow-md hover:shadow-lg">
+                                Enter
+                            </button>
+                        </form>`;
+                } else if (room.current_players < room.max_players) {
+                    actionsHTML = `
+                        <form method="POST" action="/rooms/${room.id}/join">
+                            <input type="hidden" name="_token" value="${csrf}">
+                            <button type="submit"
+                                class="bg-green-500 text-white px-4 py-2 rounded-lg hover:bg-green-600 transition-colors shadow-md hover:shadow-lg">
+                                Join
+                            </button>
+                        </form>`;
                 } else {
-                    card.style.background = publicGradient;
+                    actionsHTML = `<span class="text-red-500 font-semibold">Room is full</span>`;
+                }
+
+                // Match the original fancy card structure (gradient hover glow, etc.)
+                return `
+                <li id="room-${room.id}"
+                    class="relative group p-5 border border-gray-200 rounded-xl flex justify-between items-center
+                        hover:shadow-xl transition duration-300 ease-in-out hover:-translate-y-1">
+
+                    <!-- Gradient border hover glow -->
+                    <span class="absolute inset-0 rounded-xl bg-gradient-to-r from-indigo-500 to-purple-500 opacity-0 group-hover:opacity-100 blur-md transition duration-500"></span>
+                    <span class="absolute inset-0 rounded-xl bg-white"></span>
+
+                    <!-- Content -->
+                    <div class="relative flex flex-col">
+                        <span class="font-semibold text-gray-800 text-lg">${room.code}</span>
+                        <div class="flex items-center mt-1 space-x-2">
+                            <span class="px-2 py-0.5 rounded-full text-xs font-medium ${badgeCls}">
+                                ${cap(room.type)}
+                            </span>
+                            <span class="px-2 py-0.5 rounded-full bg-gray-100 text-gray-600 text-xs font-medium">
+                                ${room.current_players}/${room.max_players} players
+                            </span>
+                        </div>
+                    </div>
+
+                    <!-- Actions -->
+                    <div class="relative flex space-x-2">
+                        ${actionsHTML}
+                    </div>
+                </li>`;
+            }
+
+            // Simple diff: only replace an li's content if it actually changed
+            function upsertRoom(room) {
+                const id = `room-${room.id}`;
+                const html = renderRoomItem(room);
+                const existing = document.getElementById(id);
+                if (!existing) {
+                    roomList.insertAdjacentHTML('beforeend', html);
+                    return;
+                }
+                // Compare by a lightweight fingerprint
+                const fingerprint = `${room.code}|${room.type}|${room.current_players}|${room.max_players}|${room.isInRoom}`;
+                if (existing.dataset.fingerprint !== fingerprint) {
+                    // Replace while keeping position
+                    const wrapper = document.createElement('div');
+                    wrapper.innerHTML = html.trim();
+                    const next = wrapper.firstElementChild;
+                    next.dataset.fingerprint = fingerprint;
+                    existing.replaceWith(next);
                 }
             }
 
-            // Initial update
-            updateCardColor();
+            function rebuildAll(rooms) {
+                // Build a fragment to avoid layout thrash
+                const frag = document.createDocumentFragment();
+                rooms.forEach(room => {
+                    const wrapper = document.createElement('div');
+                    wrapper.innerHTML = renderRoomItem(room);
+                    const li = wrapper.firstElementChild;
+                    li.dataset.fingerprint = `${room.code}|${room.type}|${room.current_players}|${room.max_players}|${room.isInRoom}`;
+                    frag.appendChild(li);
+                });
+                roomList.innerHTML = '';
+                roomList.appendChild(frag);
+            }
 
-            // Change background when select changes
-            select.addEventListener('change', updateCardColor);
-
-            card.addEventListener('mouseleave', () => {
-                updateCardColor();
-            });
-
-            // Fetch rooms
+            // Fetch rooms (keeps your polling, but now pretty)
             async function fetchRooms() {
                 try {
-                    const res = await fetch('/rooms/json', {
-                        headers: {
-                            'Accept': 'application/json'
-                        }
-                    });
-
+                    const res = await fetch('/rooms/json', { headers: { 'Accept': 'application/json' } });
                     if (!res.ok) {
                         console.error('Failed to fetch rooms:', res.status);
                         return;
                     }
-
                     const rooms = await res.json();
 
-                    roomList.innerHTML = '';
-
-                    if (rooms.length === 0) {
-                        roomList.innerHTML = '<li class="text-gray-500">No active rooms right now.</li>';
+                    if (!Array.isArray(rooms) || rooms.length === 0) {
+                        roomList.innerHTML = '<li class="text-gray-400 text-center py-6 italic">No active rooms right now.</li>';
                         return;
                     }
 
-                    rooms.forEach(room => {
-                        const li = document.createElement('li');
-                        li.id = `room-${room.id}`;
-                        li.classList.add('mb-2','p-2','border','rounded','flex','justify-between','items-center');
+                    // If counts differ, rebuild; else upsert per-room
+                    const currentIds = Array.from(roomList.children).map(li => li.id).filter(Boolean);
+                    const newIds = rooms.map(r => `room-${r.id}`);
 
-                        let buttonHTML = '';
+                    const structureChanged = currentIds.length !== newIds.length ||
+                        currentIds.some((id, i) => id !== newIds[i]);
 
-                        if (room.isInRoom) {
-                            buttonHTML = `
-                                <form method="GET" action="/rooms/${room.id}">
-                                    <button type="submit" class="bg-purple-500 text-white px-4 py-2 rounded hover:bg-purple-600">
-                                        Enter Room
-                                    </button>
-                                </form>`;
-                        } else if (room.current_players < room.max_players) {
-                            buttonHTML = `
-                                <form method="POST" action="/rooms/${room.id}/join">
-                                    <input type="hidden" name="_token" value="${csrf}">
-                                    <button type="submit" class="bg-green-500 text-white px-2 py-1 rounded hover:bg-green-600">
-                                        Join Room
-                                    </button>
-                                </form>`;
-                        } else {
-                            buttonHTML = `<span class="text-red-500">Room is full</span>`;
-                        }
-
-                        li.innerHTML = `<span>${room.code} (${room.type.charAt(0).toUpperCase() + room.type.slice(1)}) — ${room.current_players}/${room.max_players}</span>${buttonHTML}`;
-                        roomList.appendChild(li);
-                    });
+                    if (structureChanged || roomList.children.length === 0) {
+                        rebuildAll(rooms);
+                    } else {
+                        rooms.forEach(upsertRoom);
+                    }
                 } catch (error) {
                     console.error('Error fetching rooms:', error);
                 }
@@ -182,5 +243,5 @@
             fetchRooms();
             setInterval(fetchRooms, 5000);
         });
-    </script>
+        </script>
 </x-app-layout>
