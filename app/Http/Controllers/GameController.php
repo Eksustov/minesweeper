@@ -7,6 +7,7 @@ use App\Models\Game;
 use Illuminate\Http\Request;
 use App\Events\{GameStarted, GameUpdated, TileUpdated};
 use App\Services\MinesweeperService;
+use Illuminate\Support\Facades\DB;
 
 class GameController extends Controller
 {
@@ -118,7 +119,7 @@ class GameController extends Controller
 
         $row    = (int) $request->input('row');
         $col    = (int) $request->input('col');
-        $action = $request->string('action');
+        $action = $request->input('action');  
         $key    = "{$row}-{$col}";
 
         // get player's color in this room (for flag background)
@@ -157,68 +158,93 @@ class GameController extends Controller
         }
 
         // === REVEAL path ===
-
+        // === REVEAL path ===
         if (!isset($board[$row][$col])) {
             return response()->json(['status' => 'error', 'message' => 'Invalid tile'], 422);
         }
 
-        // 1) Do not reveal a flagged tile
-        if (isset($flags[$key])) {
-            return response()->json(['status' => 'ok', 'cells' => [], 'gameOver' => false]);
-        }
+        return DB::transaction(function () use ($room, $game, $row, $col) {
+            // Lock and re-read latest state
+            $locked = \App\Models\Game::query()->whereKey($game->id)->lockForUpdate()->first();
 
-        // 2) Collect reveal while respecting flags
-        $result = $this->minesweeperService->collectReveal($board, $rows, $cols, $row, $col, $flags);
-        $cells  = $result['cells'];
+            $board    = is_array($locked->board)    ? $locked->board    : (is_string($locked->board)    ? json_decode($locked->board, true)    ?: [] : []);
+            $flags    = is_array($locked->flags)    ? $locked->flags    : (is_string($locked->flags)    ? json_decode($locked->flags, true)    ?: [] : []);
+            $revealed = is_array($locked->revealed) ? $locked->revealed : (is_string($locked->revealed) ? json_decode($locked->revealed, true) ?: [] : []);
 
-        if (empty($cells)) {
-            return response()->json(['status' => 'ok', 'cells' => [], 'gameOver' => false]);
-        }
+            $rows = (int)$locked->rows;
+            $cols = (int)$locked->cols;
+            $mines = (int)$locked->mines;
 
-        // 3) Double guard (in case): strip any flagged cells from set
-        $cells = array_values(array_filter($cells, function ($c) use ($flags) {
-            return !isset($flags["{$c['row']}-{$c['col']}"]);
-        }));
+            $key = "{$row}-{$col}";
 
-        if (empty($cells)) {
-            return response()->json(['status' => 'ok', 'cells' => [], 'gameOver' => false]);
-        }
+            // 1) Hard stop: don't reveal flagged tile
+            if (isset($flags[$key])) {
+                return response()->json(['status' => 'ok', 'cells' => [], 'gameOver' => false]);
+            }
 
-        // 4) Persist revealed to board + revealed map
-        foreach ($cells as $c) {
-            $revealed["{$c['row']}-{$c['col']}"] = true;
-            $board[$c['row']][$c['col']]['revealed'] = true;
-        }
+            // 2) Collect reveal with *current* flags
+            $result = app(\App\Services\MinesweeperService::class)
+                ->collectReveal($board, $rows, $cols, $row, $col, $flags);
 
-        // 5) Win/lose check
-        $safeTotal = $rows * $cols - $mines;
-        $safeRevealed = 0;
-        for ($r = 0; $r < $rows; $r++) {
-            for ($cc = 0; $cc < $cols; $cc++) {
-                if (empty($board[$r][$cc]['mine']) && !empty($board[$r][$cc]['revealed'])) {
-                    $safeRevealed++;
+            $cells  = $result['cells'];
+            if (empty($cells)) {
+                return response()->json(['status' => 'ok', 'cells' => [], 'gameOver' => false]);
+            }
+
+            // 3) Strip any now-flagged cells (double guard)
+            $cells = array_values(array_filter($cells, function ($c) use ($flags) {
+                return !isset($flags["{$c['row']}-{$c['col']}"]);
+            }));
+            if (empty($cells)) {
+                return response()->json(['status' => 'ok', 'cells' => [], 'gameOver' => false]);
+            }
+
+            // 4) Persist revealed — NEVER mark flagged
+            foreach ($cells as $c) {
+                $ckey = "{$c['row']}-{$c['col']}";
+                if (isset($flags[$ckey])) continue;
+                $revealed[$ckey] = true;
+                $board[$c['row']][$c['col']]['revealed'] = true;
+            }
+
+            // 5) Only the clicked tile being a mine ends the game
+            $clickedWasMine = false;
+            foreach ($cells as $c) {
+                if ($c['row'] === $row && $c['col'] === $col && !empty($c['mine'])) {
+                    $clickedWasMine = true;
+                    break;
                 }
             }
-        }
-        $gameOver = $result['hitMine'] || ($safeRevealed >= $safeTotal);
 
-        // 6) Save
-        $game->board    = $board;
-        $game->revealed = $revealed;
-        $game->save();
+            $safeTotal = $rows * $cols - $mines;
+            $safeRevealed = 0;
+            for ($r = 0; $r < $rows; $r++) {
+                for ($cc = 0; $cc < $cols; $cc++) {
+                    if (empty($board[$r][$cc]['mine']) && !empty($board[$r][$cc]['revealed'])) {
+                        $safeRevealed++;
+                    }
+                }
+            }
+            $gameOver = $clickedWasMine || ($safeRevealed >= $safeTotal);
 
-        // 7) Broadcast authoritative reveal set
-        broadcast(new \App\Events\TileUpdated(
-            $room->id,
-            $row,
-            $col,
-            'reveal',
-            $cells,     // array of {row,col,mine,count}
-            $gameOver,
-            null
-        ))->toOthers();
+            // 6) Save under lock
+            $locked->board    = $board;
+            $locked->revealed = $revealed;
+            $locked->save();
 
-        return response()->json(['status' => 'ok', 'cells' => $cells, 'gameOver' => $gameOver]);
+            // 7) Broadcast
+            broadcast(new \App\Events\TileUpdated(
+                $room->id,
+                $row,
+                $col,
+                'reveal',
+                $cells,
+                $gameOver,
+                null
+            ))->toOthers();
+
+            return response()->json(['status' => 'ok', 'cells' => $cells, 'gameOver' => $gameOver]);
+        });
     }
 
     public function restart(Room $room)

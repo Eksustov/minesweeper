@@ -84,6 +84,7 @@ class MinesweeperService
         return $board;
     }
 
+    // app/Services/MinesweeperService.php
     public function collectReveal(array $board, int $rows, int $cols, int $r, int $c, array $flagSet = []): array
     {
         // If starting tile is flagged, do nothing
@@ -96,6 +97,8 @@ class MinesweeperService
         $out = [];
         $hitMine = false;
 
+        $startKey = "{$r}-{$c}";
+
         while ($queue) {
             [$cr,$cc] = array_shift($queue);
             if ($cr < 0 || $cc < 0 || $cr >= $rows || $cc >= $cols) continue;
@@ -103,7 +106,8 @@ class MinesweeperService
             $visited[$cr][$cc] = true;
 
             // Skip flagged cells entirely
-            if (isset($flagSet["{$cr}-{$cc}"])) continue;
+            $curKey = "{$cr}-{$cc}";
+            if (isset($flagSet[$curKey])) continue;
 
             $cell = $board[$cr][$cc] ?? null;
             if (!$cell) continue;
@@ -111,14 +115,20 @@ class MinesweeperService
             $mine  = !empty($cell['mine']);
             $count = (int)($cell['count'] ?? 0);
 
-            $out[] = ['row'=>$cr,'col'=>$cc,'mine'=>$mine,'count'=>$count];
-
+            // ✅ Only include a mine if it is the **clicked** (starting) tile
             if ($mine) {
-                $hitMine = true;
-                // don't expand past a mine
+                if ($curKey === $startKey) {
+                    $out[] = ['row'=>$cr,'col'=>$cc,'mine'=>true,'count'=>$count];
+                    $hitMine = true;
+                }
+                // Mines other than the starting tile are NOT added and NOT expanded
                 continue;
             }
 
+            // Safe cell: include it
+            $out[] = ['row'=>$cr,'col'=>$cc,'mine'=>false,'count'=>$count];
+
+            // Expand only from zero-count safe tiles
             if ($count === 0) {
                 for ($dr=-1; $dr<=1; $dr++) {
                     for ($dc=-1; $dc<=1; $dc++) {

@@ -149,7 +149,12 @@ export default function initMinesweeper(config) {
 
     function reveal(r, c) {
         if (gameOver) return;
-        if (!board[r] || !board[r][c]) return;
+        const cell = board[r]?.[c];
+        if (!cell) return;
+    
+        // ✅ local hard guards
+        if (cell.flagged) return;   // <- don't reveal flagged
+        if (cell.revealed) return;  // <- already revealed, skip
     
         const toReveal = floodRevealCollect(r, c);
         if (!toReveal.length) return;
@@ -165,7 +170,6 @@ export default function initMinesweeper(config) {
             });
         }
     
-        // Send only the first tile so backend gets row & col
         const firstTile = toReveal[0];
         axios.post(updateUrl, {
             roomId: roomId,
@@ -176,8 +180,6 @@ export default function initMinesweeper(config) {
     
         checkWin();
     }
-    
-    
 
     function floodRevealCollect(sr, sc) {
         const queue = [{ r: sr, c: sc }];
