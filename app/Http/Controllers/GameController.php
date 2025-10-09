@@ -207,7 +207,7 @@ class GameController extends Controller
                 $board[$c['row']][$c['col']]['revealed'] = true;
             }
 
-            // 5) Only the clicked tile being a mine ends the game
+            // 5) Win/lose check (clicked-only mine ends the game)
             $clickedWasMine = false;
             foreach ($cells as $c) {
                 if ($c['row'] === $row && $c['col'] === $col && !empty($c['mine'])) {
@@ -216,6 +216,33 @@ class GameController extends Controller
                 }
             }
 
+            // If the player clicked a mine, reveal ALL mines for everybody
+            if ($clickedWasMine) {
+                $mineCells = [];
+                for ($rr = 0; $rr < $rows; $rr++) {
+                    for ($cc = 0; $cc < $cols; $cc++) {
+                        if (!empty($board[$rr][$cc]['mine'])) {
+                            $mineCells[] = [
+                                'row'   => $rr,
+                                'col'   => $cc,
+                                'mine'  => true,
+                                'count' => (int)($board[$rr][$cc]['count'] ?? 0),
+                            ];
+                            $board[$rr][$cc]['revealed'] = true;
+                            $revealed["{$rr}-{$cc}"] = true;
+                        }
+                    }
+                }
+
+                // Merge clicked region with all mines (dedupe by row/col)
+                $byKey = [];
+                foreach (array_merge($cells, $mineCells) as $item) {
+                    $byKey["{$item['row']}-{$item['col']}"] = $item;
+                }
+                $cells = array_values($byKey);
+            }
+
+            // Win on all safe revealed
             $safeTotal = $rows * $cols - $mines;
             $safeRevealed = 0;
             for ($r = 0; $r < $rows; $r++) {
@@ -227,18 +254,18 @@ class GameController extends Controller
             }
             $gameOver = $clickedWasMine || ($safeRevealed >= $safeTotal);
 
-            // 6) Save under lock
-            $locked->board    = $board;
-            $locked->revealed = $revealed;
-            $locked->save();
+            // 6) Save
+            $game->board    = $board;
+            $game->revealed = $revealed;
+            $game->save();
 
-            // 7) Broadcast
+            // 7) Broadcast authoritative reveal set to everyone
             broadcast(new \App\Events\TileUpdated(
                 $room->id,
                 $row,
                 $col,
                 'reveal',
-                $cells,
+                $cells,     // now contains all mines if mine was clicked
                 $gameOver,
                 null
             ))->toOthers();

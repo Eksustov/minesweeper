@@ -278,22 +278,43 @@ export default function initMinesweeper(config) {
             if (e.action === "reveal") {
                 (e.value || []).forEach(({ row, col, mine, count }) => {
                     const cell = board[row]?.[col];
-                    if (!cell || cell.revealed) return;
-            
-                    // 🚫 Do not reveal if currently flagged on this client
-                    if (cell.flagged) return;
-            
+                    if (!cell) return;
+
+                    if (e.gameOver) {
+                    // If this revealed cell was flagged on this client, clear the flag visuals/state
+                    if (cell.flagged) {
+                        cell.flagged = false;
+                        cell.flagColor = null;
+                        if (cell.element) {
+                        cell.element.textContent = "";
+                        cell.element.style.backgroundColor = "";
+                        cell.element.style.boxShadow = "";
+                        }
+                        flagsPlaced = Math.max(0, flagsPlaced - 1);
+                    }
+
+                    // Apply authoritative values and reveal
+                    if (typeof mine !== "undefined") cell.mine = !!mine;
+                    if (typeof count !== "undefined") cell.count = count;
+                    revealCell(row, col, true);
+                    return; // done with this item
+                    }
+
+                    // Normal (non-gameOver) reveals still respect local flags
+                    if (cell.revealed || cell.flagged) return;
+
                     if (typeof mine !== "undefined") cell.mine = !!mine;
                     if (typeof count !== "undefined") cell.count = count;
                     revealCell(row, col, true);
                 });
-            
+
                 if (e.gameOver) {
+                    updateMineCounter();
                     gameOver = true;
                     statusMessage.textContent = "Game Over!";
                     board.flat().forEach(c => { if (c.element) c.element.disabled = true; });
                 }
-            }            
+                }          
         });
 
         channel.listen(".GameStarted", (e) => {
