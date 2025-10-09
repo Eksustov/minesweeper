@@ -13,11 +13,16 @@ class Game extends Model
         'cols',
         'mines',
         'board',
+        'flags',
+        'revealed',
         'started',
     ];
 
     protected $casts = [
-        'board' => 'json',
+        'board'    => 'array',   // <— store as array
+        'flags'    => 'array',
+        'revealed' => 'array',
+        'started'  => 'boolean',
     ];
 
     public function room()

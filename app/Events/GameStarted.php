@@ -30,7 +30,7 @@ class GameStarted implements ShouldBroadcastNow
 
     public function broadcastOn()
     {
-        return new PresenceChannel("room.{$this->roomId}");
+        return new Channel("room.{$this->roomId}");
     }
 
     public function broadcastAs()

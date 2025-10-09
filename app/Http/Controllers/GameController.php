@@ -23,40 +23,21 @@ class GameController extends Controller
         $game = $room->games()->where('started', true)->latest()->first();
 
         if (!$game) {
-            // No game exists yet — generate and save
-            [$rows, $cols, $mines] = [9, 9, 10]; // default easy mode
-            $board = $this->minesweeperService->generateBoard($rows, $cols, $mines);
+            [$rows,$cols,$mines] = [9,9,10];
+
+            $board = $this->minesweeperService->generateBoard($rows,$cols,$mines);
 
             $game = $room->games()->create([
                 'difficulty' => 'easy',
                 'rows' => $rows,
                 'cols' => $cols,
                 'mines' => $mines,
-                'board' => json_encode($board),
+                'board' => $board,        // <— array
+                'flags' => [],
+                'revealed' => [],
                 'started' => true,
             ]);
-        } else {
-            $board = $game->board; // already cast to array
-            $rows = $game->rows;
-            $cols = $game->cols;
-            $mines = $game->mines;
         }
-
-        return view('minesweeper', [
-            'room' => $room,
-            'game' => $game,
-            'rows' => $rows,
-            'cols' => $cols,
-            'mines' => $mines,
-            'board' => $board,
-            'flags' => $game->flags ? json_decode($game->flags, true) : [],
-            'revealed' => $game->revealed ? json_decode($game->revealed, true) : [],
-        ]);
-    }
-
-    public function show(Room $room)
-    {
-        $game = $room->games()->where('started', true)->latest()->firstOrFail();
 
         return view('minesweeper', [
             'room' => $room,
@@ -64,10 +45,26 @@ class GameController extends Controller
             'rows' => $game->rows,
             'cols' => $game->cols,
             'mines' => $game->mines,
-            'board' => json_decode($game->board, true), // ✅ decode JSON into array
-            'revealed' => $game->revealed ? json_decode($game->revealed, true) : [],
-            'flags' => $game->flags ? json_decode($game->flags, true) : [],
-        ]);        
+            'board' => $game->board,          // <— already array via cast
+            'flags' => $game->flags ?? [],
+            'revealed' => $game->revealed ?? [],
+        ]);
+    }
+
+    public function show(Room $room)
+    {
+        $game = $room->games()->where('started', true)->latest()->firstOrFail();
+    
+        return view('minesweeper', [
+            'room' => $room,
+            'game' => $game,
+            'rows' => $game->rows,
+            'cols' => $game->cols,
+            'mines' => $game->mines,
+            'board' => $game->board,           // <— array
+            'flags' => $game->flags ?? [],
+            'revealed' => $game->revealed ?? [],
+        ]);
     }
 
     public function start(Room $room, Request $request)
@@ -75,95 +72,153 @@ class GameController extends Controller
         if ($room->user_id !== auth()->id()) {
             return back()->with('error', 'Only the creator can start the game.');
         }
-
+    
         if ($room->games()->where('started', true)->exists()) {
             return redirect()->route('games.show', $room);
         }
-
-        [$rows, $cols, $mines] = $this->getGameSettings($request->input('difficulty', 'easy'), $request);
-
-        $board = app(MinesweeperService::class)->generateBoard($rows, $cols, $mines);
-
+    
+        [$rows,$cols,$mines] = $this->getGameSettings($request->input('difficulty','easy'), $request);
+        $board = $this->minesweeperService->generateBoard($rows,$cols,$mines);
+    
         $game = $room->games()->create([
             'difficulty' => $request->input('difficulty', 'easy'),
             'rows' => $rows,
             'cols' => $cols,
             'mines' => $mines,
-            'board' => json_encode($board),
+            'board' => $board,           // <—
+            'flags' => [],
+            'revealed' => [],
             'started' => true,
         ]);
-
+    
         broadcast(new GameStarted($room->id, $board, $rows, $cols, $mines))->toOthers();
-
+    
         return redirect()->route('games.show', $room);
     }
 
     public function update(Request $request, Room $room)
     {
-        $row = $request->input('row');
-        $col = $request->input('col');
-    
-        \Log::info("Tile clicked:", ['row' => $row, 'col' => $col]);
-    
+        $request->validate([
+            'row'    => 'nullable|integer',
+            'col'    => 'nullable|integer',
+            'action' => 'required|in:reveal,flag',
+            'value'  => 'nullable', // for flag
+        ]);
+
         $game = $room->games()->where('started', true)->latest()->firstOrFail();
-    
-        // Decode board JSON if needed
-        $board = is_array($game->board) ? $game->board : json_decode($game->board, true);
-    
-        if (!isset($board[$row][$col])) {
-            \Log::error("Board dimensions:", ['rows' => count($board), 'cols' => count($board[0] ?? [])]);
-            throw new \Exception("Invalid tile coordinates");
+
+        $board = $game->board ?? [];
+        $rows  = (int)$game->rows;
+        $cols  = (int)$game->cols;
+        $mines = (int)$game->mines;
+
+        $action = $request->string('action');
+        $row    = $request->input('row');
+        $col    = $request->input('col');
+
+        // player color for flags
+        $playerColor = optional($request->user()->rooms()->where('rooms.id',$room->id)->first())->pivot->color;
+
+        if ($action === 'flag') {
+            if (!isset($board[$row][$col])) {
+                return response()->json(['status'=>'error','message'=>'Invalid tile'], 422);
+            }
+
+            $flags = $game->flags ?? [];
+            $key = "{$row}-{$col}";
+
+            if ($request->boolean('value')) {
+                $flags[$key] = $playerColor ?: '#000000';
+            } else {
+                unset($flags[$key]);
+            }
+
+            $game->flags = $flags;
+            $game->save();
+
+            broadcast(new \App\Events\TileUpdated(
+                $room->id, $row, $col, 'flag', $request->boolean('value'), false, $playerColor
+            ))->toOthers();
+
+            return response()->json(['status'=>'ok','flags'=>$flags]);
         }
-    
-        // Reveal tile
-        $board[$row][$col]['revealed'] = true;
-    
-        // Save back
+
+        // REVEAL
+        if (!isset($board[$row][$col])) {
+            return response()->json(['status'=>'error','message'=>'Invalid tile'], 422);
+        }
+
+        $result = $this->minesweeperService->collectReveal($board,$rows,$cols,(int)$row,(int)$col);
+        $cells  = $result['cells'];
+        if (empty($cells)) {
+            return response()->json(['status'=>'ok']);
+        }
+
+        // persist revealed keys
+        $revealed = $game->revealed ?? [];
+        foreach ($cells as $c) {
+            $revealed["{$c['row']}-{$c['col']}"] = true;
+            // (optional) also mark on board for clarity
+            $board[$c['row']][$c['col']]['revealed'] = true;
+        }
+
+        // Check win (all non-mines revealed)
+        $safeTotal = $rows*$cols - $mines;
+        $safeRevealed = 0;
+        for ($r=0;$r<$rows;$r++) {
+            for ($c=0;$c<$cols;$c++) {
+                if (empty($board[$r][$c]['mine']) && !empty($board[$r][$c]['revealed'])) {
+                    $safeRevealed++;
+                }
+            }
+        }
+        $gameOver = $result['hitMine'] || ($safeRevealed >= $safeTotal);
+
         $game->board = $board;
+        $game->revealed = $revealed;
         $game->save();
 
-        broadcast(new TileUpdated(
+        broadcast(new \App\Events\TileUpdated(
             $room->id,
             $row,
             $col,
             'reveal',
-            $board[$row][$col],
-            auth()->user()->name ?? 'unknown',
-            false
+            $cells,           // <— array of revealed cells
+            $gameOver,
+            null              // playerColor not used for reveal
         ))->toOthers();
-        
-    
-        return response()->json(['board' => $board]);
-    }    
+
+        return response()->json(['status'=>'ok','cells'=>$cells,'gameOver'=>$gameOver]);
+    }
 
     public function restart(Room $room)
     {
         if ($room->user_id !== auth()->id()) {
-            return response()->json(['status' => 'error', 'message' => 'Only the creator can restart.'], 403);
+            return response()->json(['status'=>'error','message'=>'Only the creator can restart.'], 403);
         }
-
+    
         $game = $room->games()->latest()->first();
         if (!$game) {
-            return response()->json(['status' => 'error', 'message' => 'No game found.'], 404);
+            return response()->json(['status'=>'error','message'=>'No game found.'], 404);
         }
-
-        $board = app(MinesweeperService::class)->generateBoard($game->rows, $game->cols, $game->mines);
-
+    
+        $board = $this->minesweeperService->generateBoard($game->rows, $game->cols, $game->mines);
+    
         $game->update([
-            'board' => json_encode($board),
-            'flags' => json_encode([]),
-            'revealed' => json_encode([]),
+            'board' => $board,       // <—
+            'flags' => [],
+            'revealed' => [],
             'started' => true,
         ]);
-
+    
         broadcast(new GameStarted($room->id, $board, $game->rows, $game->cols, $game->mines))->toOthers();
-
+    
         return response()->json([
             'status' => 'ok',
-            'board' => $board,
-            'rows' => $game->rows,
-            'cols' => $game->cols,
-            'mines' => $game->mines,
+            'board'  => $board,
+            'rows'   => $game->rows,
+            'cols'   => $game->cols,
+            'mines'  => $game->mines,
         ]);
     }
 

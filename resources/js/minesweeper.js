@@ -69,8 +69,7 @@ export default function initMinesweeper(config) {
         for (let r = 0; r < rows; r++) {
             for (let c = 0; c < cols; c++) {
                 const btn = document.createElement("button");
-                btn.className =
-                    "w-12 h-12 bg-gray-300 rounded flex items-center justify-center text-sm font-bold";
+                btn.className = "ms-cell";
                 btn.dataset.row = r;
                 btn.dataset.col = c;
     
@@ -217,18 +216,16 @@ export default function initMinesweeper(config) {
 
     function revealCell(r, c, restoring = false) {
         const cell = board[r][c];
-        if (!cell || cell.revealed) return;
+        if (!cell || (cell.revealed && !restoring)) return;
         cell.revealed = true;
 
         const btn = cell.element;
         if (cell.mine) {
             btn.textContent = "💣";
-            btn.className =
-                "w-12 h-12 bg-red-500 rounded flex items-center justify-center text-sm font-bold text-white";
+            btn.className = "ms-cell ms-cell-mine";
         } else {
             btn.textContent = cell.count > 0 ? cell.count : "";
-            btn.className =
-                "w-12 h-12 bg-gray-100 rounded flex items-center justify-center text-sm font-bold text-gray-800";
+            btn.className = "ms-cell ms-cell-revealed";
         }
     }
 

@@ -13,7 +13,7 @@
                 </div>
 
                 <div class="flex justify-center">
-                    <div id="board" class="grid gap-1"></div>
+                    <div id="board" class="grid gap-1 bg-slate-100 p-1 rounded-lg"></div>
                 </div>
 
                 <div class="mt-4 flex space-x-2">
