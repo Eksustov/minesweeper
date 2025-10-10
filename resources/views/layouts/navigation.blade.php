@@ -1,6 +1,6 @@
 <!-- Primary Navigation Menu -->
 <nav x-data="{ open: false }"
-     class="relative z-40 bg-gradient-to-r from-indigo-700 via-indigo-600 to-fuchsia-600 text-white shadow-xl">
+     class="relative z-40 nav-gradient text-white shadow-xl">
 
     <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div class="flex h-16 items-center justify-between">

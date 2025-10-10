@@ -32,3 +32,35 @@
     background: #ef4444;         /* red-500 */
     color: white;
   }
+
+  .nav-gradient {
+    position: relative;
+    isolation: isolate;            /* keeps ::before under the content */
+  }
+  .nav-gradient::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    z-index: -1;
+    /* You can tweak these colors anytime */
+    background: linear-gradient(
+      90deg,
+      #4f46e5, /* indigo-600 */
+      #6366f1, /* indigo-500 */
+      #a21caf, /* fuchsia-700 */
+      #6366f1, /* indigo-500 */
+      #4f46e5  /* indigo-600 */
+    );
+    background-size: 300% 100%;
+    animation: nav-gradient-move 20s linear infinite;
+    will-change: background-position;
+  }
+  @keyframes nav-gradient-move {
+    0%   { background-position:   0% 0; }
+    100% { background-position: 100% 0; }
+  }
+
+  /* Respect users who prefer less motion */
+  @media (prefers-reduced-motion: reduce) {
+    .nav-gradient::before { animation: none; }
+  }
