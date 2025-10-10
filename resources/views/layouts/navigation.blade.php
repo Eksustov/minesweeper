@@ -8,11 +8,7 @@
             <div class="flex items-center gap-8">
                 <!-- Brand -->
                 <a href="{{ route('welcome') }}" class="flex items-center gap-2 group">
-                    <span class="inline-flex h-9 w-9 items-center justify-center rounded-xl bg-white/10 ring-1 ring-white/20">
-                        <svg viewBox="0 0 24 24" class="h-5 w-5 fill-white/90">
-                            <path d="M4 4h16v4H4zM4 10h10v4H4zM4 16h16v4H4z"/>
-                        </svg>
-                    </span>
+                <x-application-logo />
                     <span class="text-lg font-semibold tracking-tight">
                         Minesweeper Live
                     </span>
