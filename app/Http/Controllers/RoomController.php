@@ -19,24 +19,35 @@ class RoomController extends Controller
         return view('welcome', compact('rooms'));
     }
 
-    public function json()
+    public function json(Request $request)
     {
+        $perPage = max(1, min((int) $request->input('per_page', 10), 50));
         $rooms = \App\Models\Room::with('players')
-            ->where('type', 'public') // ⬅️ hide private from JSON list
+            ->where('type', 'public')            // hide private rooms
             ->latest()
-            ->get()
-            ->map(function ($room) {
-                return [
-                    'id' => $room->id,
-                    'code' => $room->code,
-                    'type' => $room->type,
-                    'max_players' => $room->max_players,
-                    'current_players' => $room->players->count(),
-                    'isInRoom' => $room->players->contains(auth()->id()),
-                ];
-            });
+            ->paginate($perPage);                // <-- paginate
     
-        return response()->json($rooms);
+        // Map items for a slim payload
+        $data = collect($rooms->items())->map(function ($room) {
+            return [
+                'id'               => $room->id,
+                'code'             => $room->code,
+                'type'             => $room->type,
+                'max_players'      => $room->max_players,
+                'current_players'  => $room->players->count(),
+                'isInRoom'         => $room->players->contains(auth()->id()),
+            ];
+        })->values();
+    
+        return response()->json([
+            'data' => $data,
+            'meta' => [
+                'current_page' => $rooms->currentPage(),
+                'last_page'    => $rooms->lastPage(),
+                'per_page'     => $rooms->perPage(),
+                'total'        => $rooms->total(),
+            ],
+        ]);
     }
 
     public function joinByCode(Request $request)
@@ -158,27 +169,44 @@ class RoomController extends Controller
     public function kick(Request $request, Room $room)
     {
         $user = auth()->user();
-        $targetUserId = $request->input('user_id');
+        $targetUserId = (int) $request->input('user_id');
 
         if ($room->user_id !== $user->id) {
             return response()->json(['status' => 'error', 'message' => 'Only the creator can kick players.'], 403);
         }
-
-        if ($targetUserId == $user->id) {
+        if ($targetUserId === $user->id) {
             return response()->json(['status' => 'error', 'message' => 'You cannot kick yourself.'], 400);
         }
-
         if (!$room->players->contains($targetUserId)) {
             return response()->json(['status' => 'error', 'message' => 'Player not in room.'], 404);
         }
 
+        // Remove the player
         $room->players()->detach($targetUserId);
-        $room->load('players');
+        $room->load('players', 'creator');
 
-        broadcast(new PlayerLeft($room))->toOthers();
-        broadcast(new PlayerKicked($room->id, $targetUserId))->toOthers();
+        // Build a lean players payload for the frontend
+        $playersPayload = $room->players->map(function ($p) use ($room) {
+            return [
+                'id'     => $p->id,
+                'name'   => $p->name,
+                'color'  => $p->pivot->color ?? '#ccc',
+                'isHost' => $p->id === $room->creator->id,
+            ];
+        })->values();
 
-        return response()->json(['status' => 'ok', 'message' => 'Player kicked.']);
+        // IMPORTANT:
+        // - Send a "RoomUpdated" to everyone (do NOT chain ->toOthers()) so the HOST also receives it.
+        // - Send a "PlayerKicked" with the kicked user's id so that user can show a modal + redirect.
+        broadcast(new \App\Events\RoomUpdated($room, $playersPayload));
+        broadcast(new \App\Events\PlayerKicked($room->id, $targetUserId));
+
+        // Also respond with the fresh players list so the HOST updates immediately
+        return response()->json([
+            'status'  => 'ok',
+            'message' => 'Player kicked.',
+            'players' => $playersPayload,
+        ]);
     }
 
     private function assignColor(Room $room): string

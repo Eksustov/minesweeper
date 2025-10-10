@@ -156,13 +156,13 @@
                                     </span>
 
                                     @if ($room->user_id === auth()->id() && $player->id !== auth()->id())
-                                        <button
-                                            class="ml-auto inline-flex items-center gap-1 rounded-lg px-2 py-1 text-xs font-semibold bg-rose-50 text-rose-600 hover:bg-rose-100 transition"
-                                            onclick="kickPlayer({{ $player->id }})"
-                                            title="Kick {{ $player->name }}"
-                                        >
-                                            Kick
-                                        </button>
+                                    <button
+                                        class="ml-auto inline-flex items-center gap-1 rounded-lg px-2 py-1 text-xs font-semibold bg-rose-50 text-rose-600 hover:bg-rose-100 transition"
+                                        onclick="openKickModal({{ $player->id }}, @js($player->name))"
+                                        title="Kick {{ $player->name }}"
+                                    >
+                                        Kick
+                                    </button>
                                     @endif
                                 </li>
                             @endforeach
@@ -185,105 +185,188 @@
 
     {{-- Scripts --}}
     <script>
-        // Copy room code
         document.addEventListener('DOMContentLoaded', () => {
-            const btn = document.getElementById('copyCodeBtn');
-            if (!btn) return;
-            btn.addEventListener('click', async () => {
-                try {
-                    await navigator.clipboard.writeText(btn.dataset.code);
-                    const old = btn.innerHTML;
-                    btn.innerHTML = 'Copied!';
-                    setTimeout(() => btn.innerHTML = old, 1200);
-                } catch {}
+        // Copy code
+        const copyBtn = document.getElementById('copyCodeBtn');
+        if (copyBtn) {
+            copyBtn.addEventListener('click', async () => {
+            try {
+                await navigator.clipboard.writeText(copyBtn.dataset.code);
+                const old = copyBtn.innerHTML;
+                copyBtn.innerHTML = 'Copied!';
+                setTimeout(() => (copyBtn.innerHTML = old), 1200);
+            } catch {}
             });
-        });
+        }
 
-        document.addEventListener("DOMContentLoaded", () => {
-            const meta = document.getElementById("room-meta");
-            if (!meta) return;
+        // Meta / elements
+        const meta = document.getElementById('room-meta');
+        if (!meta) return;
 
-            const roomId   = meta.dataset.roomId;
-            const maxSeats = parseInt(meta.dataset.roomMax, 10) || 1;
+        const roomId   = meta.dataset.roomId;
+        const maxSeats = parseInt(meta.dataset.roomMax, 10) || 1;
 
-            const playersList     = document.getElementById('playersList');
-            const capacityCount   = document.getElementById('capacityCount');
-            const capacityBar     = document.getElementById('capacityBar');
-            const capacityPctText = document.getElementById('capacityPctText');
+        const playersList     = document.getElementById('playersList');
+        const capacityCount   = document.getElementById('capacityCount');
+        const capacityBar     = document.getElementById('capacityBar');
+        const capacityPctText = document.getElementById('capacityPctText');
 
-            function updateCapacity(current) {
-                const pct = Math.max(0, Math.min(100, Math.round((current / Math.max(1, maxSeats)) * 100)));
-                if (capacityCount)   capacityCount.textContent   = `${current}/${maxSeats}`;
-                if (capacityBar)     capacityBar.style.width     = `${pct}%`;
-                if (capacityPctText) capacityPctText.textContent = `${pct}% full`;
-            }
+        // ---- Capacity helpers ----
+        function updateCapacity(current) {
+            const pct = Math.max(0, Math.min(100, Math.round((current / Math.max(1, maxSeats)) * 100)));
+            if (capacityCount)   capacityCount.textContent   = `${current}/${maxSeats}`;
+            if (capacityBar)     capacityBar.style.width     = `${pct}%`;
+            if (capacityPctText) capacityPctText.textContent = `${pct}% full`;
+        }
 
-            function rebuildPlayersList(players) {
-                playersList.innerHTML = '';
-                players.forEach(player => {
-                    const li = document.createElement('li');
-                    li.id = `player-${player.id}`;
-                    li.className = 'group flex items-center gap-3 rounded-xl border border-gray-200 bg-white px-3 py-2 hover:shadow transition';
-                    const isHost = !!player.isHost;
-                    const color  = player.color ?? '#ccc';
-                    const canKick = {{ $room->user_id === auth()->id() ? 'true' : 'false' }} && player.id !== {{ auth()->id() }};
+        // ---- Rebuild players list ----
+        function rebuildPlayersList(players) {
+            playersList.innerHTML = '';
+            players.forEach(player => {
+            const li = document.createElement('li');
+            li.id = `player-${player.id}`;
+            li.className = 'group flex items-center gap-3 rounded-xl border border-gray-200 bg-white px-3 py-2 hover:shadow transition';
 
-                    li.innerHTML = `
-                        <span class="inline-block size-3 rounded-full ring-2 ring-offset-2 ring-offset-white" style="background-color: ${color}"></span>
-                        <span class="font-medium text-gray-800">
-                            ${player.name}
-                            ${isHost ? '<span class="ml-2 text-xs text-amber-600 font-semibold">host</span>' : ''}
-                        </span>
-                        ${canKick
-                            ? '<button class="ml-auto inline-flex items-center gap-1 rounded-lg px-2 py-1 text-xs font-semibold bg-rose-50 text-rose-600 hover:bg-rose-100 transition">Kick</button>'
-                            : ''
-                        }
-                    `;
+            const isHost  = !!player.isHost;
+            const color   = player.color ?? '#ccc';
+            const canKick = {{ $room->user_id === auth()->id() ? 'true' : 'false' }} && player.id !== {{ auth()->id() }};
 
-                    if (canKick) {
-                        li.querySelector('button')?.addEventListener('click', () => kickPlayer(player.id));
-                    }
-                    playersList.appendChild(li);
-                });
-
-                updateCapacity(players.length);
-            }
-
-            window.kickPlayer = function(playerId) {
-                if (!confirm("Are you sure you want to kick this player?")) return;
-                axios.post(`/rooms/${roomId}/kick`, { user_id: playerId })
-                    .then(res => console.log(res.data.message))
-                    .catch(err => alert(err.response?.data?.message || 'Failed to kick player'));
-            };
-
-            // Echo: keep list + capacity in sync
-            const ch = window.Echo.channel(`room.${roomId}`);
-
-            ch.listen('.PlayerJoined', (e) => {
-                // expect e.players as fresh array [{id,name,color,isHost}, ...]
-                if (Array.isArray(e.players)) rebuildPlayersList(e.players);
-            });
-
-            ch.listen('.PlayerLeft', (e) => {
-                if (Array.isArray(e.players)) rebuildPlayersList(e.players);
-            });
-
-            ch.listen('.PlayerKicked', (e) => {
-                // If server also emits e.players, prefer that to avoid drift
-                if (Array.isArray(e.players)) {
-                    rebuildPlayersList(e.players);
-                    return;
+            li.innerHTML = `
+                <span class="inline-block size-3 rounded-full ring-2 ring-offset-2 ring-offset-white" style="background-color:${color}"></span>
+                <span class="font-medium text-gray-800">
+                ${player.name}
+                ${isHost ? '<span class="ml-2 text-xs text-amber-600 font-semibold">host</span>' : ''}
+                </span>
+                ${canKick
+                ? '<button class="ml-auto inline-flex items-center gap-1 rounded-lg px-2 py-1 text-xs font-semibold bg-rose-50 text-rose-600 hover:bg-rose-100 transition">Kick</button>'
+                : ''
                 }
-                // Fallback: mutate DOM + recalc
-                const li = document.getElementById(`player-${e.playerId}`);
-                if (li) li.remove();
-                const current = document.querySelectorAll('#playersList > li').length;
-                updateCapacity(current);
-                // If you were kicked, your redirect logic should run elsewhere
+            `;
+
+            if (canKick) {
+                li.querySelector('button')?.addEventListener('click', () => openKickModal(player.id, player.name));
+            }
+            playersList.appendChild(li);
             });
 
-            // Initialize capacity once from DOM
-            updateCapacity(document.querySelectorAll('#playersList > li').length);
+            updateCapacity(players.length);
+        }
+
+        // ---- Modal kick flow ----
+        let _pendingKick = { id: null, name: '' };
+
+        window.openKickModal = function(userId, userName) {
+            _pendingKick.id   = userId;
+            _pendingKick.name = userName || '';
+            const txt = document.getElementById('kickConfirmText');
+            if (txt) txt.textContent = `Are you sure you want to remove ${_pendingKick.name || 'this player'} from the room?`;
+            document.getElementById('kickConfirmModal')?.classList.remove('hidden');
+        };
+
+        window.closeKickModal = function() {
+            document.getElementById('kickConfirmModal')?.classList.add('hidden');
+            _pendingKick = { id: null, name: '' };
+        };
+
+        async function confirmKick() {
+            if (!_pendingKick.id) return;
+            try {
+            await axios.post(`/rooms/${roomId}/kick`, { user_id: _pendingKick.id });
+            // Host UI will refresh via RoomUpdated broadcast
+            } catch (err) {
+            console.error(err);
+            alert(err.response?.data?.message || 'Failed to kick player');
+            } finally {
+            closeKickModal();
+            }
+        }
+
+        document.getElementById('kickConfirmBtn')?.addEventListener('click', confirmKick);
+        document.getElementById('kickedOkBtn')?.addEventListener('click', () => {
+            window.location.href = "{{ route('welcome') }}";
         });
+
+        // ---- Echo listeners ----
+        const ch = window.Echo.channel(`room.${roomId}`);
+
+        // Single source of truth: RoomUpdated carries full players array
+        ch.listen('.RoomUpdated', (e) => {
+            if (Array.isArray(e.players)) {
+            rebuildPlayersList(e.players);
+            }
+        });
+
+        // Still support these (in case you fire them elsewhere)
+        ch.listen('.PlayerJoined', (e) => {
+                    if (Array.isArray(e.players)) rebuildPlayersList(e.players);
+                    })
+            .listen('.PlayerLeft',   (e) => {
+                    if (Array.isArray(e.players)) rebuildPlayersList(e.players);
+                    });
+
+        // Handle being kicked yourself; also update host if payload included
+        ch.listen('.PlayerKicked', (e) => {
+            // If kicked user is me: show modal + auto-redirect
+            @auth
+            if (e.playerId === {{ auth()->id() }}) {
+            const modal = document.getElementById('kickedNoticeModal');
+            modal?.classList.remove('hidden');
+            setTimeout(() => {
+                if (!modal.classList.contains('hidden')) {
+                window.location.href = "{{ route('welcome') }}";
+                }
+            }, 2000);
+            }
+            @endauth
+
+            // If server also sent e.players, rebuild immediately
+            if (Array.isArray(e.players)) {
+            rebuildPlayersList(e.players);
+            } else {
+            // Fallback: remove the li locally
+            const li = document.getElementById(`player-${e.playerId}`);
+            if (li) li.remove();
+            const current = document.querySelectorAll('#playersList > li').length;
+            updateCapacity(current);
+            }
+        });
+
+        // Initial capacity sync
+        updateCapacity(document.querySelectorAll('#playersList > li').length);
+    });
     </script>
+    <div id="kickConfirmModal" class="fixed inset-0 z-[60] hidden">
+        <div class="absolute inset-0 bg-black/40"></div>
+        <div class="absolute inset-0 flex items-center justify-center p-4">
+            <div class="w-full max-w-sm rounded-xl bg-white shadow-xl">
+            <div class="px-5 py-4 border-b">
+                <h3 class="text-sm font-semibold text-gray-900">Remove player?</h3>
+                <p id="kickConfirmText" class="mt-1 text-xs text-gray-500"></p>
+            </div>
+            <div class="px-5 py-4 flex items-center justify-end gap-2">
+                <button type="button" class="px-3 py-2 text-sm rounded-lg bg-gray-100 hover:bg-gray-200"
+                        onclick="closeKickModal()">Cancel</button>
+                <button type="button" class="px-3 py-2 text-sm rounded-lg bg-rose-600 text-white hover:bg-rose-700"
+                        id="kickConfirmBtn">Kick</button>
+            </div>
+            </div>
+        </div>
+        </div>
+
+        {{-- You’ve been removed Modal (shown to kicked user) --}}
+        <div id="kickedNoticeModal" class="fixed inset-0 z-[60] hidden">
+        <div class="absolute inset-0 bg-black/40"></div>
+        <div class="absolute inset-0 flex items-center justify-center p-4">
+            <div class="w-full max-w-sm rounded-xl bg-white shadow-xl">
+            <div class="px-5 py-4">
+                <h3 class="text-sm font-semibold text-gray-900">You’ve been removed from the room</h3>
+                <p class="mt-1 text-xs text-gray-500">You’ll be redirected to the home page.</p>
+            </div>
+            <div class="px-5 py-4 flex items-center justify-end">
+                <button type="button" class="px-3 py-2 text-sm rounded-lg bg-indigo-600 text-white hover:bg-indigo-700"
+                        id="kickedOkBtn">OK</button>
+            </div>
+            </div>
+        </div>
+        </div>
 </x-app-layout>

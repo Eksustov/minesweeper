@@ -127,59 +127,70 @@
     </div>
 
     <script>
-        document.addEventListener('DOMContentLoaded', () => {
-            const csrf = document.querySelector('meta[name="csrf-token"]').content;
-            const roomList = document.getElementById('roomList');
-            const card = document.getElementById('createRoomCard');
+        <script>
+            document.addEventListener('DOMContentLoaded', () => {
+            // --- Create card gradient (optional, keep if you have that card) ---
+            const card  = document.getElementById('createRoomCard');
             const select = document.getElementById('roomTypeSelect');
-
-            const publicGradient = 'linear-gradient(to right, #6366f1, #8b5cf6)';
-            const privateGradient = 'linear-gradient(to right, #6b21a8, #4c1d95)';
-
-            function updateCardColor() {
+            if (card && select) {
+                const publicGradient  = 'linear-gradient(to right, #6366f1, #8b5cf6)';
+                const privateGradient = 'linear-gradient(to right, #6b21a8, #4c1d95)';
+                const updateCardColor = () => {
                 card.style.background = (select.value === 'private') ? privateGradient : publicGradient;
+                };
+                updateCardColor();
+                select.addEventListener('change', updateCardColor);
+                card.addEventListener('mouseleave', updateCardColor);
             }
-            updateCardColor();
-            select.addEventListener('change', updateCardColor);
-            card.addEventListener('mouseleave', updateCardColor);
 
-            // --- helpers ---
-            const cap = s => s.charAt(0).toUpperCase() + s.slice(1);
+            // --- Rooms list + pagination ---
+            const roomList = document.getElementById('roomList');
+            // We'll append a pager footer after the card that contains the list
+            let pagerEl = null;
+
+            // Keep a stable CSRF value if present (for Join forms)
+            const csrf = document.querySelector('meta[name="csrf-token"]')?.content || '';
+
+            // Client-side pagination state
+            let currentPage = 1;
+            const perPage   = 8; // tweak to taste
+            let pollTimer   = null;
+
+            // Helpers
+            const cap = s => s ? s.charAt(0).toUpperCase() + s.slice(1) : s;
 
             function renderRoomItem(room) {
                 const isPrivate = room.type === 'private';
-                const badgeCls = isPrivate
-                    ? 'bg-purple-100 text-purple-700'
-                    : 'bg-green-100 text-green-700';
+                const badgeCls  = isPrivate ? 'bg-purple-100 text-purple-700'
+                                            : 'bg-green-100 text-green-700';
 
                 // Actions (Enter / Join / Full)
                 let actionsHTML = '';
                 if (room.isInRoom) {
-                    actionsHTML = `
-                        <form method="GET" action="/rooms/${room.id}">
-                            <button type="submit"
-                                class="bg-purple-500 text-white px-4 py-2 rounded-lg hover:bg-purple-600 transition-colors shadow-md hover:shadow-lg">
-                                Enter
-                            </button>
-                        </form>`;
+                actionsHTML = `
+                    <form method="GET" action="/rooms/${room.id}">
+                    <button type="submit"
+                        class="bg-purple-500 text-white px-4 py-2 rounded-lg hover:bg-purple-600 transition-colors shadow-md hover:shadow-lg">
+                        Enter
+                    </button>
+                    </form>`;
                 } else if (room.current_players < room.max_players) {
-                    actionsHTML = `
-                        <form method="POST" action="/rooms/${room.id}/join">
-                            <input type="hidden" name="_token" value="${csrf}">
-                            <button type="submit"
-                                class="bg-green-500 text-white px-4 py-2 rounded-lg hover:bg-green-600 transition-colors shadow-md hover:shadow-lg">
-                                Join
-                            </button>
-                        </form>`;
+                actionsHTML = `
+                    <form method="POST" action="/rooms/${room.id}/join">
+                    <input type="hidden" name="_token" value="${csrf}">
+                    <button type="submit"
+                        class="bg-green-500 text-white px-4 py-2 rounded-lg hover:bg-green-600 transition-colors shadow-md hover:shadow-lg">
+                        Join
+                    </button>
+                    </form>`;
                 } else {
-                    actionsHTML = `<span class="text-red-500 font-semibold">Room is full</span>`;
+                actionsHTML = `<span class="text-red-500 font-semibold">Room is full</span>`;
                 }
 
-                // Match the original fancy card structure (gradient hover glow, etc.)
                 return `
                 <li id="room-${room.id}"
                     class="relative group p-5 border border-gray-200 rounded-xl flex justify-between items-center
-                        hover:shadow-xl transition duration-300 ease-in-out hover:-translate-y-1">
+                            hover:shadow-xl transition duration-300 ease-in-out hover:-translate-y-1">
 
                     <!-- Gradient border hover glow -->
                     <span class="absolute inset-0 rounded-xl bg-gradient-to-r from-indigo-500 to-purple-500 opacity-0 group-hover:opacity-100 blur-md transition duration-500"></span>
@@ -187,93 +198,112 @@
 
                     <!-- Content -->
                     <div class="relative flex flex-col">
-                        <span class="font-semibold text-gray-800 text-lg">${room.code}</span>
-                        <div class="flex items-center mt-1 space-x-2">
-                            <span class="px-2 py-0.5 rounded-full text-xs font-medium ${badgeCls}">
-                                ${cap(room.type)}
-                            </span>
-                            <span class="px-2 py-0.5 rounded-full bg-gray-100 text-gray-600 text-xs font-medium">
-                                ${room.current_players}/${room.max_players} players
-                            </span>
-                        </div>
+                    <span class="font-semibold text-gray-800 text-lg">${room.code}</span>
+                    <div class="flex items-center mt-1 space-x-2">
+                        <span class="px-2 py-0.5 rounded-full text-xs font-medium ${badgeCls}">
+                        ${cap(room.type)}
+                        </span>
+                        <span class="px-2 py-0.5 rounded-full bg-gray-100 text-gray-600 text-xs font-medium">
+                        ${room.current_players}/${room.max_players} players
+                        </span>
+                    </div>
                     </div>
 
                     <!-- Actions -->
                     <div class="relative flex space-x-2">
-                        ${actionsHTML}
+                    ${actionsHTML}
                     </div>
                 </li>`;
             }
 
-            // Simple diff: only replace an li's content if it actually changed
-            function upsertRoom(room) {
-                const id = `room-${room.id}`;
-                const html = renderRoomItem(room);
-                const existing = document.getElementById(id);
-                if (!existing) {
-                    roomList.insertAdjacentHTML('beforeend', html);
-                    return;
-                }
-                // Compare by a lightweight fingerprint
-                const fingerprint = `${room.code}|${room.type}|${room.current_players}|${room.max_players}|${room.isInRoom}`;
-                if (existing.dataset.fingerprint !== fingerprint) {
-                    // Replace while keeping position
-                    const wrapper = document.createElement('div');
-                    wrapper.innerHTML = html.trim();
-                    const next = wrapper.firstElementChild;
-                    next.dataset.fingerprint = fingerprint;
-                    existing.replaceWith(next);
-                }
-            }
-
             function rebuildAll(rooms) {
-                // Build a fragment to avoid layout thrash
+                if (!roomList) return;
+                if (!rooms.length) {
+                roomList.innerHTML = '<li class="text-gray-400 text-center py-6 italic">No active rooms right now.</li>';
+                return;
+                }
                 const frag = document.createDocumentFragment();
                 rooms.forEach(room => {
-                    const wrapper = document.createElement('div');
-                    wrapper.innerHTML = renderRoomItem(room);
-                    const li = wrapper.firstElementChild;
-                    li.dataset.fingerprint = `${room.code}|${room.type}|${room.current_players}|${room.max_players}|${room.isInRoom}`;
-                    frag.appendChild(li);
+                const wrap = document.createElement('div');
+                wrap.innerHTML = renderRoomItem(room);
+                frag.appendChild(wrap.firstElementChild);
                 });
                 roomList.innerHTML = '';
                 roomList.appendChild(frag);
             }
 
-            // Fetch rooms (keeps your polling, but now pretty)
-            async function fetchRooms() {
+            function ensurePagerContainer() {
+                if (pagerEl) return pagerEl;
+                // append pager right after the list's card container
+                // roomList.parentElement is the card body; its parent is the card
+                const cardContainer = roomList?.parentElement;
+                pagerEl = document.createElement('div');
+                pagerEl.id = 'roomsPager';
+                pagerEl.className = 'flex items-center justify-between mt-4';
+                cardContainer?.appendChild(pagerEl);
+                return pagerEl;
+            }
+
+            function renderPager(meta) {
+                // If the API returns plain array (no pagination), remove pager
+                if (!meta) {
+                if (pagerEl) pagerEl.remove();
+                pagerEl = null;
+                return;
+                }
+                const el = ensurePagerContainer();
+                el.innerHTML = `
+                <button id="roomsPrev"
+                        class="px-3 py-1 rounded bg-gray-100 hover:bg-gray-200 disabled:opacity-50"
+                        ${meta.current_page <= 1 ? 'disabled' : ''}>
+                    Previous
+                </button>
+                <span class="text-sm text-gray-600">Page ${meta.current_page} of ${meta.last_page}</span>
+                <button id="roomsNext"
+                        class="px-3 py-1 rounded bg-gray-100 hover:bg-gray-200 disabled:opacity-50"
+                        ${meta.current_page >= meta.last_page ? 'disabled' : ''}>
+                    Next
+                </button>
+                `;
+
+                el.querySelector('#roomsPrev')?.addEventListener('click', () => {
+                currentPage = Math.max(1, meta.current_page - 1);
+                fetchRooms(currentPage);
+                });
+                el.querySelector('#roomsNext')?.addEventListener('click', () => {
+                currentPage = Math.min(meta.last_page, meta.current_page + 1);
+                fetchRooms(currentPage);
+                });
+            }
+
+            async function fetchRooms(page = 1) {
                 try {
-                    const res = await fetch('/rooms/json', { headers: { 'Accept': 'application/json' } });
-                    if (!res.ok) {
-                        console.error('Failed to fetch rooms:', res.status);
-                        return;
-                    }
-                    const rooms = await res.json();
+                const res = await fetch(`/rooms/json?per_page=${perPage}&page=${page}`, {
+                    headers: { 'Accept': 'application/json' }
+                });
+                if (!res.ok) {
+                    console.error('Failed to fetch rooms:', res.status);
+                    return;
+                }
 
-                    if (!Array.isArray(rooms) || rooms.length === 0) {
-                        roomList.innerHTML = '<li class="text-gray-400 text-center py-6 italic">No active rooms right now.</li>';
-                        return;
-                    }
+                const payload = await res.json();
+                // Support both shapes: array (legacy) or { data, meta } (paginated)
+                const rooms = Array.isArray(payload) ? payload : (payload.data || []);
+                const meta  = Array.isArray(payload) ? null    : (payload.meta || null);
 
-                    // If counts differ, rebuild; else upsert per-room
-                    const currentIds = Array.from(roomList.children).map(li => li.id).filter(Boolean);
-                    const newIds = rooms.map(r => `room-${r.id}`);
+                rebuildAll(rooms);
+                renderPager(meta);
 
-                    const structureChanged = currentIds.length !== newIds.length ||
-                        currentIds.some((id, i) => id !== newIds[i]);
-
-                    if (structureChanged || roomList.children.length === 0) {
-                        rebuildAll(rooms);
-                    } else {
-                        rooms.forEach(upsertRoom);
-                    }
-                } catch (error) {
-                    console.error('Error fetching rooms:', error);
+                if (meta) currentPage = meta.current_page || 1;
+                } catch (err) {
+                console.error('Error fetching rooms:', err);
                 }
             }
 
-            fetchRooms();
-            setInterval(fetchRooms, 5000);
-        });
+            // Initial load + polling on the current page
+            fetchRooms(currentPage);
+            // Polling keeps the list fresh without navigating pages
+            pollTimer = setInterval(() => fetchRooms(currentPage), 5000);
+            });
         </script>
 </x-app-layout>
