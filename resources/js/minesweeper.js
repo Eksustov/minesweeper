@@ -32,6 +32,51 @@ export default function initMinesweeper(config) {
     axios.defaults.headers.common["X-CSRF-TOKEN"] =
         document.querySelector('meta[name="csrf-token"]').content;
 
+    // ---- Local cooldown config ----
+    const CELL_COOLDOWN_MS = 800;         // per-cell: 1 action per 0.8s
+    const BURST_WINDOW_MS  = 1000;        // rolling window size
+    const BURST_MAX        = 4;           // max actions in the window
+
+    // Track last action time per cell and per user
+    const lastCellActionAt = new Map();   // key: "r-c" -> timestamp
+    const recentActions = [];             // queue of timestamps
+
+    function isRateLimitedLocal(r, c) {
+    const now = performance.now();
+    const key = `${r}-${c}`;
+
+    // Per-cell cooldown
+    const last = lastCellActionAt.get(key) || 0;
+    if (now - last < CELL_COOLDOWN_MS) return { ok: false, reason: 'cell' };
+
+    // Global burst guard
+    while (recentActions.length && now - recentActions[0] > BURST_WINDOW_MS) {
+        recentActions.shift();
+    }
+    if (recentActions.length >= BURST_MAX) return { ok: false, reason: 'burst' };
+
+    return { ok: true };
+    }
+
+    function markAction(r, c) {
+    const now = performance.now();
+    lastCellActionAt.set(`${r}-${c}`, now);
+    recentActions.push(now);
+    }
+
+    function blip(msg) {
+    if (!statusMessage) return;
+    const old = statusMessage.textContent;
+    const oldColor = statusMessage.style.color;
+    statusMessage.textContent = msg;
+    statusMessage.style.color = '#374151'; // gray-700
+    clearTimeout(statusMessage._t);
+    statusMessage._t = setTimeout(() => {
+        statusMessage.textContent = (old.includes('Win') || old.includes('Over')) ? old : '';
+        statusMessage.style.color = oldColor || '';
+    }, 800);
+    }
+
     /**
      * Initialize/reset the game board
      */
@@ -123,6 +168,13 @@ export default function initMinesweeper(config) {
         const cell = board[r][c];
         if (!cell || cell.revealed) return;
 
+        const gate = isRateLimitedLocal(r, c);
+        if (!gate.ok) {
+            blip(gate.reason === 'cell' ? 'Hold up…' : 'Too fast…');
+            return;
+        }
+        markAction(r, c);
+
         cell.flagged = !cell.flagged;
         if (cell.flagged) {
             flagsPlaced++;
@@ -151,6 +203,13 @@ export default function initMinesweeper(config) {
         if (gameOver) return;
         const cell = board[r]?.[c];
         if (!cell) return;
+
+        const gate = isRateLimitedLocal(r, c);
+        if (!gate.ok) {
+            blip(gate.reason === 'cell' ? 'Hold up…' : 'Too fast…');
+            return;
+        }
+        markAction(r, c);
     
         // ✅ local hard guards
         if (cell.flagged) return;   // <- don't reveal flagged

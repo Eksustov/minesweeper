@@ -8,6 +8,7 @@ use Illuminate\Http\Request;
 use App\Events\{GameStarted, GameUpdated, TileUpdated};
 use App\Services\MinesweeperService;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\RateLimiter;
 
 class GameController extends Controller
 {
@@ -19,8 +20,58 @@ class GameController extends Controller
         $this->minesweeperService = $minesweeperService;
     }
 
+    private function assertPlayerOrAbort(Room $room): void
+    {
+        $userId = auth()->id();
+        if (!$userId || !$room->players->contains($userId)) {
+            abort(403, 'You must be in this room to play.');
+        }
+    }
+
+    private function rateLimitActions(Room $room, Request $request): ?\Illuminate\Http\JsonResponse
+    {
+        $userId = auth()->id();
+        $row = (string) $request->input('row', '');
+        $col = (string) $request->input('col', '');
+
+        // 5 actions/user/second (reveal or flag)
+        $globalKey = "game:rate:{$room->id}:{$userId}";
+        $GLOBAL_MAX = 5;  // max attempts
+        $GLOBAL_DECAY = 1; // seconds
+
+        // 1 action per cell per second per user
+        $cellKey = "game:cell:{$room->id}:{$userId}:{$row}-{$col}";
+        $CELL_MAX = 1;
+        $CELL_DECAY = 1; // seconds
+
+        if (RateLimiter::tooManyAttempts($globalKey, $GLOBAL_MAX)) {
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Too many actions. Slow down.',
+                'retryAfter' => RateLimiter::availableIn($globalKey)
+            ], 429);
+        }
+        if ($row !== '' && $col !== '' && RateLimiter::tooManyAttempts($cellKey, $CELL_MAX)) {
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Too many actions on the same cell.',
+                'retryAfter' => RateLimiter::availableIn($cellKey)
+            ], 429);
+        }
+
+        RateLimiter::hit($globalKey, $GLOBAL_DECAY);
+        if ($row !== '' && $col !== '') {
+            RateLimiter::hit($cellKey, $CELL_DECAY);
+        }
+
+        return null;
+    }
+
     public function game(Room $room)
     {
+        $room->load('players');
+        $this->assertPlayerOrAbort($room); 
+
         $game = $room->games()->where('started', true)->latest()->first();
 
         if (!$game) {
@@ -54,6 +105,9 @@ class GameController extends Controller
 
     public function show(Room $room)
     {
+        $room->load('players');
+        $this->assertPlayerOrAbort($room); 
+
         $game = $room->games()->where('started', true)->latest()->firstOrFail();
     
         return view('minesweeper', [
@@ -70,6 +124,9 @@ class GameController extends Controller
 
     public function start(Room $room, Request $request)
     {
+        $room->load('players');
+        $this->assertPlayerOrAbort($room); 
+
         if ($room->user_id !== auth()->id()) {
             return back()->with('error', 'Only the creator can start the game.');
         }
@@ -99,6 +156,13 @@ class GameController extends Controller
 
     public function update(Request $request, Room $room)
     {
+        $room->load('players');
+        $this->assertPlayerOrAbort($room); 
+
+        if ($resp = $this->rateLimitActions($room, $request)) {
+            return $resp; // 429s on spam
+        }
+
         $request->validate([
             'row'    => 'nullable|integer',
             'col'    => 'nullable|integer',
@@ -276,6 +340,9 @@ class GameController extends Controller
 
     public function restart(Room $room)
     {
+        $room->load('players');
+        $this->assertPlayerOrAbort($room); 
+
         if ($room->user_id !== auth()->id()) {
             return response()->json(['status'=>'error','message'=>'Only the creator can restart.'], 403);
         }
