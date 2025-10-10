@@ -1,5 +1,6 @@
 @section('title', $room->code)
 <x-app-layout>
+    {{-- Header --}}
     <x-slot name="header">
         <div class="flex items-center justify-between">
             <div class="space-y-1">
@@ -35,13 +36,13 @@
         <div class="mx-auto w-full max-w-3xl">
             <div class="rounded-2xl bg-white/70 backdrop-blur shadow-xl ring-1 ring-black/5 overflow-hidden">
 
-                <!-- Top stats -->
+                {{-- Capacity (live-updating) --}}
                 <div class="p-6 border-b bg-gradient-to-r from-indigo-600 to-fuchsia-600 text-white">
                     <div class="flex items-center justify-between">
                         <div>
                             <div class="text-sm opacity-90">Capacity</div>
                             <div class="mt-1 flex items-end gap-2">
-                                <div class="text-2xl font-bold">
+                                <div id="capacityCount" class="text-2xl font-bold">
                                     {{ $room->players->count() }}/{{ $room->max_players }}
                                 </div>
                                 <div class="text-xs opacity-80">players</div>
@@ -52,16 +53,16 @@
                                 @php
                                     $pct = max(0, min(100, round(($room->players->count() / max(1,$room->max_players)) * 100)));
                                 @endphp
-                                <div class="h-full bg-white/90" style="width: {{ $pct }}%"></div>
+                                <div id="capacityBar" class="h-full bg-white/90 transition-all duration-300" style="width: {{ $pct }}%"></div>
                             </div>
-                            <div class="mt-1 text-[10px] tracking-wide opacity-80">{{ $pct }}% full</div>
+                            <div id="capacityPctText" class="mt-1 text-[10px] tracking-wide opacity-80">{{ $pct }}% full</div>
                         </div>
                     </div>
                 </div>
 
-                <!-- Content -->
+                {{-- Content --}}
                 <div class="p-6 grid gap-8 md:grid-cols-2">
-                    <!-- Left: Actions -->
+                    {{-- Left: Actions --}}
                     <div class="space-y-4">
                         <h3 class="text-sm font-semibold text-gray-700 uppercase tracking-wide">Actions</h3>
 
@@ -88,6 +89,7 @@
                         @endif
 
                         {{-- Game actions --}}
+                        @php $activeGame = $room->games()->where('started', true)->latest()->first(); @endphp
                         @if($activeGame)
                             <form method="GET" action="{{ route('games.show', $room) }}">
                                 <button type="submit"
@@ -135,7 +137,7 @@
                         @endif
                     </div>
 
-                    <!-- Right: Players -->
+                    {{-- Right: Players --}}
                     <div class="space-y-4">
                         <h3 class="text-sm font-semibold text-gray-700 uppercase tracking-wide">Players</h3>
 
@@ -175,29 +177,46 @@
         </div>
     </div>
 
-    <div id="room-meta" data-room-id="{{ $room->id }}"></div>
+    {{-- Hidden meta for JS --}}
+    <div id="room-meta"
+         data-room-id="{{ $room->id }}"
+         data-room-max="{{ $room->max_players }}">
+    </div>
 
+    {{-- Scripts --}}
     <script>
         // Copy room code
         document.addEventListener('DOMContentLoaded', () => {
             const btn = document.getElementById('copyCodeBtn');
-            if (btn) {
-                btn.addEventListener('click', async () => {
-                    try {
-                        await navigator.clipboard.writeText(btn.dataset.code);
-                        btn.textContent = 'Copied!';
-                        setTimeout(() => btn.textContent = 'Copy code', 1200);
-                    } catch {}
-                });
-            }
+            if (!btn) return;
+            btn.addEventListener('click', async () => {
+                try {
+                    await navigator.clipboard.writeText(btn.dataset.code);
+                    const old = btn.innerHTML;
+                    btn.innerHTML = 'Copied!';
+                    setTimeout(() => btn.innerHTML = old, 1200);
+                } catch {}
+            });
         });
 
         document.addEventListener("DOMContentLoaded", () => {
-            const roomMeta = document.getElementById("room-meta");
-            if (!roomMeta) return;
+            const meta = document.getElementById("room-meta");
+            if (!meta) return;
 
-            const roomId = roomMeta.dataset.roomId;
-            const playersList = document.getElementById('playersList');
+            const roomId   = meta.dataset.roomId;
+            const maxSeats = parseInt(meta.dataset.roomMax, 10) || 1;
+
+            const playersList     = document.getElementById('playersList');
+            const capacityCount   = document.getElementById('capacityCount');
+            const capacityBar     = document.getElementById('capacityBar');
+            const capacityPctText = document.getElementById('capacityPctText');
+
+            function updateCapacity(current) {
+                const pct = Math.max(0, Math.min(100, Math.round((current / Math.max(1, maxSeats)) * 100)));
+                if (capacityCount)   capacityCount.textContent   = `${current}/${maxSeats}`;
+                if (capacityBar)     capacityBar.style.width     = `${pct}%`;
+                if (capacityPctText) capacityPctText.textContent = `${pct}% full`;
+            }
 
             function rebuildPlayersList(players) {
                 playersList.innerHTML = '';
@@ -205,17 +224,29 @@
                     const li = document.createElement('li');
                     li.id = `player-${player.id}`;
                     li.className = 'group flex items-center gap-3 rounded-xl border border-gray-200 bg-white px-3 py-2 hover:shadow transition';
+                    const isHost = !!player.isHost;
+                    const color  = player.color ?? '#ccc';
+                    const canKick = {{ $room->user_id === auth()->id() ? 'true' : 'false' }} && player.id !== {{ auth()->id() }};
+
                     li.innerHTML = `
-                        <span class="inline-block size-3 rounded-full ring-2 ring-offset-2 ring-offset-white" style="background-color: ${player.color ?? '#ccc'}"></span>
-                        <span class="font-medium text-gray-800">${player.name}</span>
-                        ${
-                          @json($room->user_id === auth()->id())
-                          ? ` ${player.id !== {{ auth()->id() }} ? '<button class="ml-auto inline-flex items-center gap-1 rounded-lg px-2 py-1 text-xs font-semibold bg-rose-50 text-rose-600 hover:bg-rose-100 transition" onclick="kickPlayer('+player.id+')">Kick</button>' : ''}`
-                          : ''
+                        <span class="inline-block size-3 rounded-full ring-2 ring-offset-2 ring-offset-white" style="background-color: ${color}"></span>
+                        <span class="font-medium text-gray-800">
+                            ${player.name}
+                            ${isHost ? '<span class="ml-2 text-xs text-amber-600 font-semibold">host</span>' : ''}
+                        </span>
+                        ${canKick
+                            ? '<button class="ml-auto inline-flex items-center gap-1 rounded-lg px-2 py-1 text-xs font-semibold bg-rose-50 text-rose-600 hover:bg-rose-100 transition">Kick</button>'
+                            : ''
                         }
                     `;
+
+                    if (canKick) {
+                        li.querySelector('button')?.addEventListener('click', () => kickPlayer(player.id));
+                    }
                     playersList.appendChild(li);
                 });
+
+                updateCapacity(players.length);
             }
 
             window.kickPlayer = function(playerId) {
@@ -225,20 +256,34 @@
                     .catch(err => alert(err.response?.data?.message || 'Failed to kick player'));
             };
 
-            window.Echo.channel(`room.${roomId}`)
-                .listen('.PlayerJoined', (e) => { rebuildPlayersList(e.players); })
-                .listen('.PlayerLeft',   (e) => { rebuildPlayersList(e.players); });
+            // Echo: keep list + capacity in sync
+            const ch = window.Echo.channel(`room.${roomId}`);
 
-            window.Echo.channel(`room.${roomId}`)
-                .listen('.PlayerKicked', e => {
-                    if (e.playerId === {{ auth()->id() }}) {
-                        alert("You have been kicked from the room!");
-                        window.location.href = "{{ route('welcome') }}";
-                    } else {
-                        const li = document.getElementById(`player-${e.playerId}`);
-                        if (li) li.remove();
-                    }
-                });
+            ch.listen('.PlayerJoined', (e) => {
+                // expect e.players as fresh array [{id,name,color,isHost}, ...]
+                if (Array.isArray(e.players)) rebuildPlayersList(e.players);
+            });
+
+            ch.listen('.PlayerLeft', (e) => {
+                if (Array.isArray(e.players)) rebuildPlayersList(e.players);
+            });
+
+            ch.listen('.PlayerKicked', (e) => {
+                // If server also emits e.players, prefer that to avoid drift
+                if (Array.isArray(e.players)) {
+                    rebuildPlayersList(e.players);
+                    return;
+                }
+                // Fallback: mutate DOM + recalc
+                const li = document.getElementById(`player-${e.playerId}`);
+                if (li) li.remove();
+                const current = document.querySelectorAll('#playersList > li').length;
+                updateCapacity(current);
+                // If you were kicked, your redirect logic should run elsewhere
+            });
+
+            // Initialize capacity once from DOM
+            updateCapacity(document.querySelectorAll('#playersList > li').length);
         });
     </script>
 </x-app-layout>

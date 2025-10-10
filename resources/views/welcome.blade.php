@@ -37,6 +37,38 @@
             </form>
         </div>
 
+          <!-- Join by Code Card (only when logged in) -->
+        @auth
+        <div class="bg-white shadow-xl rounded-2xl p-6 w-full max-w-md">
+            <h3 class="text-xl font-semibold mb-4 text-gray-800">Join a Room by Code</h3>
+            @if (session('error'))
+                <div class="mb-3 text-sm text-red-600">{{ session('error') }}</div>
+            @endif
+            @if (session('success'))
+                <div class="mb-3 text-sm text-green-600">{{ session('success') }}</div>
+            @endif
+
+            <form method="POST" action="{{ route('rooms.joinByCode') }}" class="flex space-x-2">
+                @csrf
+                <input
+                    type="text"
+                    name="code"
+                    maxlength="6"  {{-- adjust if your code length differs --}}
+                    placeholder="Enter 6-char code"
+                    class="flex-1 border border-gray-300 rounded-lg p-2 uppercase tracking-widest focus:ring-2 focus:ring-indigo-300 focus:outline-none"
+                    required
+                />
+                <button
+                    type="submit"
+                    class="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition">
+                    Join
+                </button>
+            </form>
+
+            <p class="mt-2 text-xs text-gray-500">Ask a friend to share their room code.</p>
+        </div>
+        @endauth
+
         <!-- Available Rooms Card -->
         <div class="bg-white shadow-2xl rounded-2xl p-6 w-full max-w-2xl">
             <h3 class="text-2xl font-bold mb-6 text-gray-800 border-b pb-2">Available Rooms</h3>

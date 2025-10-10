@@ -12,13 +12,18 @@ class RoomController extends Controller
 {
     public function index()
     {
-        $rooms = Room::with('players')->latest()->get();
+        $rooms = Room::with('players')
+            ->where('type', 'public') // ⬅️ only public in index too (if used)
+            ->latest()
+            ->get();
         return view('welcome', compact('rooms'));
     }
 
     public function json()
     {
         $rooms = \App\Models\Room::with('players')
+            ->where('type', 'public') // ⬅️ hide private from JSON list
+            ->latest()
             ->get()
             ->map(function ($room) {
                 return [
@@ -30,8 +35,43 @@ class RoomController extends Controller
                     'isInRoom' => $room->players->contains(auth()->id()),
                 ];
             });
-
+    
         return response()->json($rooms);
+    }
+
+    public function joinByCode(Request $request)
+    {
+        $request->validate([
+            'code' => 'required|string|max:20', // your codes are 6 chars; keep flexible
+        ]);
+
+        $code = strtoupper(trim($request->input('code')));
+        $room = Room::with('players', 'creator')->whereRaw('UPPER(code) = ?', [$code])->first();
+
+        if (!$room) {
+            return back()->withErrors(['code' => 'Room not found.'])->withInput();
+        }
+
+        // already in room?
+        if ($room->players->contains(auth()->id())) {
+            return redirect()->route('rooms.show', $room)
+                ->with('info', 'You are already in this room.');
+        }
+
+        // capacity
+        if ($room->players->count() >= $room->max_players) {
+            return back()->withErrors(['code' => 'Room is full.'])->withInput();
+        }
+
+        // attach with a color
+        $assignedColor = $this->assignColor($room);
+        $room->players()->attach(auth()->id(), ['color' => $assignedColor]);
+
+        $room->load('players');
+        broadcast(new RoomUpdated($room))->toOthers();
+        broadcast(new PlayerJoined($room))->toOthers();
+
+        return redirect()->route('rooms.show', $room)->with('success', 'Joined room '.$room->code.'.');
     }
 
     private function refreshRoom(Room $room): void

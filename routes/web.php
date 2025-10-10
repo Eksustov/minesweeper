@@ -40,6 +40,7 @@ Route::middleware('auth')->group(function () {
         Route::post('/{room}/join', [RoomController::class, 'join'])->name('rooms.join');
         Route::post('/{room}/leave', [RoomController::class, 'leave'])->name('rooms.leave');
         Route::post('/{room}/kick', [RoomController::class, 'kick'])->name('rooms.kick');
+        Route::post('/join-by-code', [RoomController::class, 'joinByCode'])->name('rooms.joinByCode');
     });
     
     Route::prefix('games')->group(function () {
