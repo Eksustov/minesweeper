@@ -127,7 +127,6 @@
     </div>
 
     <script>
-        <script>
             document.addEventListener('DOMContentLoaded', () => {
             // --- Create card gradient (optional, keep if you have that card) ---
             const card  = document.getElementById('createRoomCard');

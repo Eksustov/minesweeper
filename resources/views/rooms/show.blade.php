@@ -289,6 +289,24 @@
         // ---- Echo listeners ----
         const ch = window.Echo.channel(`room.${roomId}`);
 
+        document.addEventListener('DOMContentLoaded', () => {
+            const meta   = document.getElementById('room-meta');
+            if (!meta) return;
+
+            const roomId = meta.dataset.roomId;
+            const ch     = window.Echo.channel(`room.${roomId}`);
+            const gameUrl = "{{ route('games.show', $room) }}";
+
+            // When the host starts the game, push everyone in the room to the game page
+            ch.listen('.GameStarted', (e) => {
+                // (optional) sanity check that payload is for this room
+                if (!e || typeof e !== 'object') return;
+                if (window.location.href !== gameUrl) {
+                window.location.href = gameUrl;
+                }
+            });
+        });
+
         // Single source of truth: RoomUpdated carries full players array
         ch.listen('.RoomUpdated', (e) => {
             if (Array.isArray(e.players)) {

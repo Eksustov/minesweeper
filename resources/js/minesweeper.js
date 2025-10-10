@@ -259,63 +259,74 @@ export default function initMinesweeper(config) {
         const channel = window.Echo.channel(`room.${roomId}`);
         channel.listen(".TileUpdated", (e) => {
             if (e.action === "flag") {
-                const cell = board[e.row]?.[e.col];
+              const cell = board[e.row]?.[e.col];
+              if (!cell) return;
+              cell.flagged = !!e.value;
+              if (cell.flagged) {
+                cell.flagColor = e.playerColor ?? "#000";
+                cell.element.textContent = "🚩";
+                cell.element.style.backgroundColor = cell.flagColor;
+              } else {
+                cell.flagColor = null;
+                cell.element.textContent = "";
+                cell.element.style.backgroundColor = "";
+              }
+              flagsPlaced = board.flat().filter(x => x.flagged).length;
+              updateMineCounter();
+              return;
+            }
+          
+            if (e.action === "reveal") {
+              // Reveal cells from the server
+              (e.value || []).forEach(({ row, col, mine, count }) => {
+                const cell = board[row]?.[col];
                 if (!cell) return;
-                cell.flagged = !!e.value;
-                if (cell.flagged) {
-                    cell.flagColor = e.playerColor ?? "#000";
-                    cell.element.textContent = "🚩";
-                    cell.element.style.backgroundColor = cell.flagColor;
-                } else {
-                    cell.flagColor = null;
+          
+                // If this is a final (gameOver) frame and locally flagged, clear visuals
+                if (e.gameOver && cell.flagged) {
+                  cell.flagged = false;
+                  cell.flagColor = null;
+                  if (cell.element) {
                     cell.element.textContent = "";
                     cell.element.style.backgroundColor = "";
+                    cell.element.style.boxShadow = "";
+                  }
+                  flagsPlaced = Math.max(0, flagsPlaced - 1);
                 }
-                flagsPlaced = board.flat().filter(x => x.flagged).length;
+          
+                if (typeof mine !== "undefined")  cell.mine  = !!mine;
+                if (typeof count !== "undefined") cell.count = count;
+          
+                // Respect local flags only for non-final updates
+                if (!e.gameOver && (cell.revealed || cell.flagged)) return;
+          
+                revealCell(row, col, true);
+              });
+          
+              if (e.gameOver) {
+                // Determine outcome: loss if any revealed cell is a mine, else win
+                const anyMine = Array.isArray(e.value) && e.value.some(v => v && v.mine);
+                gameOver = true;
+          
+                if (anyMine) {
+                  statusMessage.textContent = "Game Over!";
+                } else {
+                  statusMessage.textContent = "You Win! 🎉";
+                  // make mines look 'safe/celebratory' if you like
+                  board.flat().forEach(c => {
+                    if (c.mine && c.element) {
+                      c.element.className =
+                        "w-12 h-12 bg-green-500 rounded flex items-center justify-center text-sm font-bold text-white";
+                      c.element.textContent = "💣";
+                    }
+                  });
+                }
+          
                 updateMineCounter();
+                board.flat().forEach(c => { if (c.element) c.element.disabled = true; });
+              }
             }
-
-            if (e.action === "reveal") {
-                (e.value || []).forEach(({ row, col, mine, count }) => {
-                    const cell = board[row]?.[col];
-                    if (!cell) return;
-
-                    if (e.gameOver) {
-                    // If this revealed cell was flagged on this client, clear the flag visuals/state
-                    if (cell.flagged) {
-                        cell.flagged = false;
-                        cell.flagColor = null;
-                        if (cell.element) {
-                        cell.element.textContent = "";
-                        cell.element.style.backgroundColor = "";
-                        cell.element.style.boxShadow = "";
-                        }
-                        flagsPlaced = Math.max(0, flagsPlaced - 1);
-                    }
-
-                    // Apply authoritative values and reveal
-                    if (typeof mine !== "undefined") cell.mine = !!mine;
-                    if (typeof count !== "undefined") cell.count = count;
-                    revealCell(row, col, true);
-                    return; // done with this item
-                    }
-
-                    // Normal (non-gameOver) reveals still respect local flags
-                    if (cell.revealed || cell.flagged) return;
-
-                    if (typeof mine !== "undefined") cell.mine = !!mine;
-                    if (typeof count !== "undefined") cell.count = count;
-                    revealCell(row, col, true);
-                });
-
-                if (e.gameOver) {
-                    updateMineCounter();
-                    gameOver = true;
-                    statusMessage.textContent = "Game Over!";
-                    board.flat().forEach(c => { if (c.element) c.element.disabled = true; });
-                }
-                }          
-        });
+        });          
 
         channel.listen(".GameStarted", (e) => {
             initialBoard = Array.isArray(e.board) ? e.board : JSON.parse(e.board);
