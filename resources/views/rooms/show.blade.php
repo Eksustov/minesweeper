@@ -1,5 +1,15 @@
+{{-- resources/views/rooms/show.blade.php --}}
 @section('title', $room->code)
 <x-app-layout>
+    @php
+        $activeGame     = $room->games()->where('started', true)->latest()->first();
+        $allColors      = config('colors.list');
+        $myColor        = optional($room->players->firstWhere('id', auth()->id()))?->pivot?->color;
+        $takenByOthers  = $room->players
+            ->filter(fn($p) => $p->id !== auth()->id())
+            ->pluck('pivot.color')->filter()->values()->all();
+    @endphp
+
     {{-- Header --}}
     <x-slot name="header">
         <div class="flex items-center justify-between">
@@ -89,8 +99,8 @@
                         @endif
 
                         {{-- Game actions --}}
-                        @php $activeGame = $room->games()->where('started', true)->latest()->first(); @endphp
-                        @if($activeGame)
+                        @php $activeGameInline = $activeGame; @endphp
+                        @if($activeGameInline)
                             <form method="GET" action="{{ route('games.show', $room) }}">
                                 <button type="submit"
                                         class="w-full inline-flex items-center justify-center gap-2 px-4 py-3 rounded-xl bg-purple-600 text-white font-semibold shadow hover:bg-purple-700 transition">
@@ -143,10 +153,53 @@
 
                         <ul id="playersList" class="space-y-2">
                             @foreach ($room->players as $player)
+                                @php
+                                    $isMe = $player->id === auth()->id();
+                                    $dotColor = $player->pivot->color ?? '#ccc';
+                                @endphp
+
                                 <li id="player-{{ $player->id }}"
-                                    class="group flex items-center gap-3 rounded-xl border border-gray-200 bg-white px-3 py-2 hover:shadow transition">
-                                    <span class="inline-block size-3 rounded-full ring-2 ring-offset-2 ring-offset-white"
-                                          style="background-color: {{ $player->pivot->color }};"></span>
+                                    class="group relative flex items-center gap-3 rounded-xl border border-gray-200 bg-white px-3 py-2 hover:shadow transition">
+
+                                    @if($isMe && !$activeGame)
+                                        {{-- Clickable dot for me (pre-game) --}}
+                                        <button
+                                            id="myColorDot"
+                                            type="button"
+                                            class="inline-block size-3 rounded-full ring-2 ring-offset-2 ring-offset-white outline-none focus:ring-indigo-500"
+                                            style="background-color: {{ $dotColor }};"
+                                            aria-haspopup="true" aria-expanded="false"
+                                        ></button>
+
+                                        {{-- Popover palette --}}
+                                        <div id="colorPopover"
+                                             class="hidden absolute z-30 top-10 left-2 w-52 rounded-xl border border-gray-200 bg-white/95 shadow-lg backdrop-blur p-3">
+                                            <div class="text-xs font-semibold text-gray-600 mb-2">Pick a color</div>
+                                            <div class="grid grid-cols-6 gap-2">
+                                                @foreach($allColors as $c)
+                                                    @php
+                                                        $isMine  = $c === $myColor;
+                                                        $isTaken = in_array($c, $takenByOthers, true);
+                                                    @endphp
+                                                    <button
+                                                        type="button"
+                                                        class="h-7 w-7 rounded-full ring-2 transition
+                                                               {{ $isMine ? 'ring-indigo-600 ring-offset-2 ring-offset-white' : 'ring-transparent hover:scale-105' }}
+                                                               {{ $isTaken && !$isMine ? 'opacity-40 cursor-not-allowed' : '' }}"
+                                                        style="background-color: {{ $c }};"
+                                                        data-color="{{ $c }}"
+                                                        {{ $isTaken && !$isMine ? 'disabled' : '' }}
+                                                        title="{{ $isMine ? 'Current' : ($isTaken ? 'Taken' : 'Choose') }}"
+                                                    ></button>
+                                                @endforeach
+                                            </div>
+                                            <div class="mt-2 text-[10px] text-gray-500">Colors taken by others are disabled.</div>
+                                        </div>
+                                    @else
+                                        {{-- Static dot for others (or once game started) --}}
+                                        <span class="inline-block size-3 rounded-full ring-2 ring-offset-2 ring-offset-white"
+                                              style="background-color: {{ $dotColor }};"></span>
+                                    @endif
 
                                     <span class="font-medium text-gray-800">
                                         {{ $player->name }}
@@ -156,13 +209,13 @@
                                     </span>
 
                                     @if ($room->user_id === auth()->id() && $player->id !== auth()->id())
-                                    <button
-                                        class="ml-auto inline-flex items-center gap-1 rounded-lg px-2 py-1 text-xs font-semibold bg-rose-50 text-rose-600 hover:bg-rose-100 transition"
-                                        onclick="openKickModal({{ $player->id }}, @js($player->name))"
-                                        title="Kick {{ $player->name }}"
-                                    >
-                                        Kick
-                                    </button>
+                                        <button
+                                            class="ml-auto inline-flex items-center gap-1 rounded-lg px-2 py-1 text-xs font-semibold bg-rose-50 text-rose-600 hover:bg-rose-100 transition"
+                                            onclick="openKickModal({{ $player->id }}, @js($player->name))"
+                                            title="Kick {{ $player->name }}"
+                                        >
+                                            Kick
+                                        </button>
                                     @endif
                                 </li>
                             @endforeach
@@ -185,74 +238,192 @@
 
     {{-- Scripts --}}
     <script>
-        document.addEventListener('DOMContentLoaded', () => {
-        // Copy code
-        const copyBtn = document.getElementById('copyCodeBtn');
-        if (copyBtn) {
-            copyBtn.addEventListener('click', async () => {
-            try {
-                await navigator.clipboard.writeText(copyBtn.dataset.code);
-                const old = copyBtn.innerHTML;
-                copyBtn.innerHTML = 'Copied!';
-                setTimeout(() => (copyBtn.innerHTML = old), 1200);
-            } catch {}
-            });
-        }
+        // Expose helpers so other AJAX handlers (like color change) can reuse them
+        window.updateCapacity = function(current) {
+            const meta = document.getElementById('room-meta');
+            const maxSeats = parseInt(meta?.dataset.roomMax || '1', 10);
+            const capacityCount   = document.getElementById('capacityCount');
+            const capacityBar     = document.getElementById('capacityBar');
+            const capacityPctText = document.getElementById('capacityPctText');
 
-        // Meta / elements
-        const meta = document.getElementById('room-meta');
-        if (!meta) return;
-
-        const roomId   = meta.dataset.roomId;
-        const maxSeats = parseInt(meta.dataset.roomMax, 10) || 1;
-
-        const playersList     = document.getElementById('playersList');
-        const capacityCount   = document.getElementById('capacityCount');
-        const capacityBar     = document.getElementById('capacityBar');
-        const capacityPctText = document.getElementById('capacityPctText');
-
-        // ---- Capacity helpers ----
-        function updateCapacity(current) {
             const pct = Math.max(0, Math.min(100, Math.round((current / Math.max(1, maxSeats)) * 100)));
             if (capacityCount)   capacityCount.textContent   = `${current}/${maxSeats}`;
             if (capacityBar)     capacityBar.style.width     = `${pct}%`;
             if (capacityPctText) capacityPctText.textContent = `${pct}% full`;
-        }
+        };
 
-        // ---- Rebuild players list ----
-        function rebuildPlayersList(players) {
+        window.rebuildPlayersList = function(players) {
+            const playersList = document.getElementById('playersList');
+            if (!playersList) return;
+
             playersList.innerHTML = '';
             players.forEach(player => {
-            const li = document.createElement('li');
-            li.id = `player-${player.id}`;
-            li.className = 'group flex items-center gap-3 rounded-xl border border-gray-200 bg-white px-3 py-2 hover:shadow transition';
+                const li = document.createElement('li');
+                li.id = `player-${player.id}`;
+                li.className = 'group relative flex items-center gap-3 rounded-xl border border-gray-200 bg-white px-3 py-2 hover:shadow transition';
 
-            const isHost  = !!player.isHost;
-            const color   = player.color ?? '#ccc';
-            const canKick = {{ $room->user_id === auth()->id() ? 'true' : 'false' }} && player.id !== {{ auth()->id() }};
+                const isHost  = !!player.isHost;
+                const color   = player.color ?? '#ccc';
+                const canKick = {{ $room->user_id === auth()->id() ? 'true' : 'false' }} && player.id !== {{ auth()->id() }};
+                const isMe    = player.id === {{ auth()->id() }};
+                const active  = {{ $activeGame ? 'true' : 'false' }};
 
-            li.innerHTML = `
-                <span class="inline-block size-3 rounded-full ring-2 ring-offset-2 ring-offset-white" style="background-color:${color}"></span>
-                <span class="font-medium text-gray-800">
-                ${player.name}
-                ${isHost ? '<span class="ml-2 text-xs text-amber-600 font-semibold">host</span>' : ''}
-                </span>
-                ${canKick
-                ? '<button class="ml-auto inline-flex items-center gap-1 rounded-lg px-2 py-1 text-xs font-semibold bg-rose-50 text-rose-600 hover:bg-rose-100 transition">Kick</button>'
-                : ''
+                const dot = (!active && isMe)
+                    ? `<button id="myColorDot" type="button"
+                               class="inline-block size-3 rounded-full ring-2 ring-offset-2 ring-offset-white outline-none focus:ring-indigo-500"
+                               style="background-color:${color};" aria-haspopup="true" aria-expanded="false"></button>
+                       <div id="colorPopover"
+                            class="hidden absolute z-30 top-10 left-2 w-52 rounded-xl border border-gray-200 bg-white/95 shadow-lg backdrop-blur p-3">
+                            <div class="text-xs font-semibold text-gray-600 mb-2">Pick a color</div>
+                            <div class="grid grid-cols-6 gap-2">
+                                @foreach($allColors as $c)
+                                    <button type="button"
+                                            class="h-7 w-7 rounded-full ring-2 transition ring-transparent hover:scale-105"
+                                            style="background-color: {{ $c }};"
+                                            data-color="{{ $c }}"></button>
+                                @endforeach
+                            </div>
+                            <div class="mt-2 text-[10px] text-gray-500">Colors taken by others are disabled.</div>
+                        </div>`
+                    : `<span class="inline-block size-3 rounded-full ring-2 ring-offset-2 ring-offset-white" style="background-color:${color}"></span>`;
+
+                li.innerHTML = `
+                    ${dot}
+                    <span class="font-medium text-gray-800">
+                        ${player.name}
+                        ${isHost ? '<span class="ml-2 text-xs text-amber-600 font-semibold">host</span>' : ''}
+                    </span>
+                    ${canKick
+                        ? '<button class="ml-auto inline-flex items-center gap-1 rounded-lg px-2 py-1 text-xs font-semibold bg-rose-50 text-rose-600 hover:bg-rose-100 transition">Kick</button>'
+                        : ''
+                    }
+                `;
+
+                if (canKick) {
+                    li.querySelector('button:last-of-type')?.addEventListener('click', () => openKickModal(player.id, player.name));
                 }
-            `;
 
-            if (canKick) {
-                li.querySelector('button')?.addEventListener('click', () => openKickModal(player.id, player.name));
-            }
-            playersList.appendChild(li);
+                playersList.appendChild(li);
             });
 
-            updateCapacity(players.length);
+            window.updateCapacity(players.length);
+            wireColorPicker(); // rebind picker if my row was rebuilt
+        };
+
+        function wireColorPicker() {
+            const myDot = document.getElementById('myColorDot');
+            const pop   = document.getElementById('colorPopover');
+            if (!myDot || !pop) return;
+
+            const csrf  = document.querySelector('meta[name="csrf-token"]')?.content || '';
+            const hide = () => { pop.classList.add('hidden'); myDot.setAttribute('aria-expanded','false'); };
+            const show = () => { pop.classList.remove('hidden'); myDot.setAttribute('aria-expanded','true'); };
+
+            myDot.onclick = (e) => { e.stopPropagation(); pop.classList.contains('hidden') ? show() : hide(); };
+            document.addEventListener('click', (e) => { if (!pop.contains(e.target) && e.target !== myDot) hide(); });
+            document.addEventListener('keydown', (e) => { if (e.key === 'Escape') hide(); });
+
+            // Disable colors taken by others using current DOM
+            const taken = new Set(
+                Array.from(document.querySelectorAll('#playersList > li .inline-block.size-3'))
+                    .map(el => el.style?.backgroundColor)
+                    .filter(Boolean)
+            );
+
+            pop.querySelectorAll('button[data-color]').forEach(btn => {
+                const c = btn.dataset.color;
+                // keep my current color selectable even if present in taken set
+                const myCurrent = myDot.style.backgroundColor;
+                const rgb = btn.style.backgroundColor;
+                const isTaken = (rgb && rgb !== myCurrent && taken.has(rgb));
+                btn.disabled = isTaken;
+                if (isTaken) btn.classList.add('opacity-40','cursor-not-allowed');
+
+                btn.onclick = async () => {
+                    if (btn.disabled) return;
+                    try {
+                        const res = await axios.post(
+                            "{{ route('rooms.color', $room) }}",
+                            { color: c },
+                            { headers: { 'X-CSRF-TOKEN': csrf } }
+                        );
+                        if (Array.isArray(res?.data?.players)) {
+                            window.rebuildPlayersList(res.data.players);
+                        } else {
+                            myDot.style.backgroundColor = c;
+                        }
+                    } catch (err) {
+                        alert(err?.response?.data?.message || 'Failed to change color');
+                    } finally {
+                        hide();
+                    }
+                };
+            });
         }
 
-        // ---- Modal kick flow ----
+        document.addEventListener('DOMContentLoaded', () => {
+            // Copy room code
+            const btn = document.getElementById('copyCodeBtn');
+            btn?.addEventListener('click', async () => {
+                try {
+                    await navigator.clipboard.writeText(btn.dataset.code);
+                    const old = btn.innerHTML;
+                    btn.innerHTML = 'Copied!';
+                    setTimeout(() => btn.innerHTML = old, 1200);
+                } catch {}
+            });
+
+            const meta = document.getElementById('room-meta');
+            if (!meta) return;
+
+            const roomId = meta.dataset.roomId;
+            const ch = window.Echo.channel(`room.${roomId}`);
+
+            // Redirect everyone to game when host starts it
+            const gameUrl = "{{ route('games.show', $room) }}";
+            ch.listen('.GameStarted', (e) => {
+                if (!e || typeof e !== 'object') return;
+                if (window.location.href !== gameUrl) window.location.href = gameUrl;
+            });
+
+            // RoomUpdated is source of truth for players list
+            ch.listen('.RoomUpdated', (e) => {
+                if (Array.isArray(e.players)) {
+                    window.rebuildPlayersList(e.players);
+                }
+            });
+
+            // Also listen for join/leave (if emitted elsewhere)
+            ch.listen('.PlayerJoined', (e) => {
+                if (Array.isArray(e.players)) window.rebuildPlayersList(e.players);
+            });
+            ch.listen('.PlayerLeft', (e) => {
+                if (Array.isArray(e.players)) window.rebuildPlayersList(e.players);
+            });
+
+            // If you get kicked while on this page, bounce to welcome
+            ch.listen('.PlayerKicked', (e) => {
+                @auth
+                if (e.playerId === {{ auth()->id() }}) {
+                    window.location.href = "{{ route('welcome') }}";
+                    return;
+                }
+                @endauth
+                if (Array.isArray(e.players)) {
+                    window.rebuildPlayersList(e.players);
+                } else {
+                    // Fallback: update capacity quickly
+                    const current = document.querySelectorAll('#playersList > li').length;
+                    window.updateCapacity(current);
+                }
+            });
+
+            // Initial capacity sync + wire color palette
+            window.updateCapacity(document.querySelectorAll('#playersList > li').length);
+            wireColorPicker();
+        });
+
+        // Kick modal helpers
         let _pendingKick = { id: null, name: '' };
 
         window.openKickModal = function(userId, userName) {
@@ -269,122 +440,60 @@
         };
 
         async function confirmKick() {
-            if (!_pendingKick.id) return;
+            const meta = document.getElementById('room-meta');
+            const roomId = meta?.dataset.roomId;
+            if (!_pendingKick.id || !roomId) return;
             try {
-            await axios.post(`/rooms/${roomId}/kick`, { user_id: _pendingKick.id });
-            // Host UI will refresh via RoomUpdated broadcast
+                await axios.post(`/rooms/${roomId}/kick`, { user_id: _pendingKick.id });
             } catch (err) {
-            console.error(err);
-            alert(err.response?.data?.message || 'Failed to kick player');
+                console.error(err);
+                alert(err?.response?.data?.message || 'Failed to kick player');
             } finally {
-            closeKickModal();
+                window.closeKickModal();
             }
         }
 
-        document.getElementById('kickConfirmBtn')?.addEventListener('click', confirmKick);
-        document.getElementById('kickedOkBtn')?.addEventListener('click', () => {
-            window.location.href = "{{ route('welcome') }}";
-        });
-
-        // ---- Echo listeners ----
-        const ch = window.Echo.channel(`room.${roomId}`);
-
         document.addEventListener('DOMContentLoaded', () => {
-            const meta   = document.getElementById('room-meta');
-            if (!meta) return;
-
-            const roomId = meta.dataset.roomId;
-            const ch     = window.Echo.channel(`room.${roomId}`);
-            const gameUrl = "{{ route('games.show', $room) }}";
-
-            // When the host starts the game, push everyone in the room to the game page
-            ch.listen('.GameStarted', (e) => {
-                // (optional) sanity check that payload is for this room
-                if (!e || typeof e !== 'object') return;
-                if (window.location.href !== gameUrl) {
-                window.location.href = gameUrl;
-                }
+            document.getElementById('kickConfirmBtn')?.addEventListener('click', confirmKick);
+            document.getElementById('kickedOkBtn')?.addEventListener('click', () => {
+                window.location.href = "{{ route('welcome') }}";
             });
         });
-
-        // Single source of truth: RoomUpdated carries full players array
-        ch.listen('.RoomUpdated', (e) => {
-            if (Array.isArray(e.players)) {
-            rebuildPlayersList(e.players);
-            }
-        });
-
-        // Still support these (in case you fire them elsewhere)
-        ch.listen('.PlayerJoined', (e) => {
-                    if (Array.isArray(e.players)) rebuildPlayersList(e.players);
-                    })
-            .listen('.PlayerLeft',   (e) => {
-                    if (Array.isArray(e.players)) rebuildPlayersList(e.players);
-                    });
-
-        // Handle being kicked yourself; also update host if payload included
-        ch.listen('.PlayerKicked', (e) => {
-            // If kicked user is me: show modal + auto-redirect
-            @auth
-            if (e.playerId === {{ auth()->id() }}) {
-            const modal = document.getElementById('kickedNoticeModal');
-            modal?.classList.remove('hidden');
-            setTimeout(() => {
-                if (!modal.classList.contains('hidden')) {
-                window.location.href = "{{ route('welcome') }}";
-                }
-            }, 2000);
-            }
-            @endauth
-
-            // If server also sent e.players, rebuild immediately
-            if (Array.isArray(e.players)) {
-            rebuildPlayersList(e.players);
-            } else {
-            // Fallback: remove the li locally
-            const li = document.getElementById(`player-${e.playerId}`);
-            if (li) li.remove();
-            const current = document.querySelectorAll('#playersList > li').length;
-            updateCapacity(current);
-            }
-        });
-
-        // Initial capacity sync
-        updateCapacity(document.querySelectorAll('#playersList > li').length);
-    });
     </script>
+
+    {{-- Kick confirm modal --}}
     <div id="kickConfirmModal" class="fixed inset-0 z-[60] hidden">
         <div class="absolute inset-0 bg-black/40"></div>
         <div class="absolute inset-0 flex items-center justify-center p-4">
             <div class="w-full max-w-sm rounded-xl bg-white shadow-xl">
-            <div class="px-5 py-4 border-b">
-                <h3 class="text-sm font-semibold text-gray-900">Remove player?</h3>
-                <p id="kickConfirmText" class="mt-1 text-xs text-gray-500"></p>
-            </div>
-            <div class="px-5 py-4 flex items-center justify-end gap-2">
-                <button type="button" class="px-3 py-2 text-sm rounded-lg bg-gray-100 hover:bg-gray-200"
-                        onclick="closeKickModal()">Cancel</button>
-                <button type="button" class="px-3 py-2 text-sm rounded-lg bg-rose-600 text-white hover:bg-rose-700"
-                        id="kickConfirmBtn">Kick</button>
-            </div>
+                <div class="px-5 py-4 border-b">
+                    <h3 class="text-sm font-semibold text-gray-900">Remove player?</h3>
+                    <p id="kickConfirmText" class="mt-1 text-xs text-gray-500"></p>
+                </div>
+                <div class="px-5 py-4 flex items-center justify-end gap-2">
+                    <button type="button" class="px-3 py-2 text-sm rounded-lg bg-gray-100 hover:bg-gray-200"
+                            onclick="closeKickModal()">Cancel</button>
+                    <button type="button" class="px-3 py-2 text-sm rounded-lg bg-rose-600 text-white hover:bg-rose-700"
+                            id="kickConfirmBtn">Kick</button>
+                </div>
             </div>
         </div>
-        </div>
+    </div>
 
-        {{-- You’ve been removed Modal (shown to kicked user) --}}
-        <div id="kickedNoticeModal" class="fixed inset-0 z-[60] hidden">
+    {{-- "You’ve been removed" modal (safety if you want to use it here) --}}
+    <div id="kickedNoticeModal" class="fixed inset-0 z-[60] hidden">
         <div class="absolute inset-0 bg-black/40"></div>
         <div class="absolute inset-0 flex items-center justify-center p-4">
             <div class="w-full max-w-sm rounded-xl bg-white shadow-xl">
-            <div class="px-5 py-4">
-                <h3 class="text-sm font-semibold text-gray-900">You’ve been removed from the room</h3>
-                <p class="mt-1 text-xs text-gray-500">You’ll be redirected to the home page.</p>
-            </div>
-            <div class="px-5 py-4 flex items-center justify-end">
-                <button type="button" class="px-3 py-2 text-sm rounded-lg bg-indigo-600 text-white hover:bg-indigo-700"
-                        id="kickedOkBtn">OK</button>
-            </div>
+                <div class="px-5 py-4">
+                    <h3 class="text-sm font-semibold text-gray-900">You’ve been removed from the room</h3>
+                    <p class="mt-1 text-xs text-gray-500">You’ll be redirected to the home page.</p>
+                </div>
+                <div class="px-5 py-4 flex items-center justify-end">
+                    <button type="button" class="px-3 py-2 text-sm rounded-lg bg-indigo-600 text-white hover:bg-indigo-700"
+                            id="kickedOkBtn">OK</button>
+                </div>
             </div>
         </div>
-        </div>
+    </div>
 </x-app-layout>

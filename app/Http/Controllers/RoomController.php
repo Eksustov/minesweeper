@@ -121,6 +121,48 @@ class RoomController extends Controller
             ->with('success', 'Room created successfully.');
     }
 
+    public function changeColor(Request $request, Room $room)
+    {
+        $user = $request->user();
+        // Disallow color changes once a game is started
+        if ($room->games()->where('started', true)->exists()) {
+            return response()->json(['message' => 'Game already started.'], 422);
+        }
+
+        $color = (string) $request->input('color');
+        $allowed = collect(config('colors.list'))->all();
+        if (!in_array($color, $allowed, true)) {
+            return response()->json(['message' => 'Invalid color.'], 422);
+        }
+
+        // block colors taken by other players
+        $taken = $room->players()->where('users.id', '!=', $user->id)->pluck('room_user.color')->filter()->all();
+        if (in_array($color, $taken, true)) {
+            return response()->json(['message' => 'Color already taken.'], 409);
+        }
+
+        // update pivot color
+        $room->players()->updateExistingPivot($user->id, ['color' => $color]);
+
+        // build payload for frontend
+        $room->load('players', 'creator');
+        $playersPayload = $room->players->map(function ($p) use ($room) {
+            return [
+                'id'     => $p->id,
+                'name'   => $p->name,
+                'color'  => $p->pivot->color ?? '#ccc',
+                'isHost' => $p->id === $room->creator->id,
+            ];
+        })->values();
+
+        broadcast(new \App\Events\RoomUpdated($room, $playersPayload));
+
+        return response()->json([
+            'status'  => 'ok',
+            'players' => $playersPayload,
+        ]);
+    }
+
     public function show(Room $room)
     {
         $room->load('players', 'creator');
