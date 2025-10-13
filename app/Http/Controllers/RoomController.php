@@ -123,38 +123,42 @@ class RoomController extends Controller
 
     public function changeColor(Request $request, Room $room)
     {
+        $request->validate([
+            'color' => ['required', 'string']
+        ]);
+
         $user = $request->user();
-        // Disallow color changes once a game is started
+
+        // Only before game starts
         if ($room->games()->where('started', true)->exists()) {
-            return response()->json(['message' => 'Game already started.'], 422);
+            return response()->json(['message' => 'Game already started. Color locked.'], 422);
         }
 
         $color = (string) $request->input('color');
-        $allowed = collect(config('colors.list'))->all();
-        if (!in_array($color, $allowed, true)) {
-            return response()->json(['message' => 'Invalid color.'], 422);
+
+        // Enforce uniqueness (except keeping your own color)
+        $takenByOthers = $room->players()
+            ->wherePivot('color', $color)
+            ->where('users.id', '!=', $user->id)
+            ->exists();
+
+        if ($takenByOthers) {
+            return response()->json(['message' => 'That color is taken.'], 422);
         }
 
-        // block colors taken by other players
-        $taken = $room->players()->where('users.id', '!=', $user->id)->pluck('room_user.color')->filter()->all();
-        if (in_array($color, $taken, true)) {
-            return response()->json(['message' => 'Color already taken.'], 409);
-        }
-
-        // update pivot color
+        // Persist change
         $room->players()->updateExistingPivot($user->id, ['color' => $color]);
 
-        // build payload for frontend
-        $room->load('players', 'creator');
-        $playersPayload = $room->players->map(function ($p) use ($room) {
-            return [
-                'id'     => $p->id,
-                'name'   => $p->name,
-                'color'  => $p->pivot->color ?? '#ccc',
-                'isHost' => $p->id === $room->creator->id,
-            ];
-        })->values();
+        // Build lean payload
+        $room->load('players','creator');
+        $playersPayload = $room->players->map(fn($p) => [
+            'id'     => $p->id,
+            'name'   => $p->name,
+            'color'  => $p->pivot->color ?? '#ccc',
+            'isHost' => $p->id === $room->creator->id,
+        ])->values()->all();
 
+        // Broadcast to everyone (including the changer)
         broadcast(new \App\Events\RoomUpdated($room, $playersPayload));
 
         return response()->json([

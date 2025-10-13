@@ -44,7 +44,7 @@
 
     <div class="py-10 px-4 sm:px-6 lg:px-8">
         <div class="mx-auto w-full max-w-3xl">
-            <div class="rounded-2xl bg-white/70 backdrop-blur shadow-xl ring-1 ring-black/5 overflow-hidden">
+            <div class="rounded-2xl bg-white/70 backdrop-blur shadow-xl ring-1 ring-black/5 overflow-visible">
 
                 {{-- Capacity (live-updating) --}}
                 <div class="p-6 border-b bg-gradient-to-r from-indigo-600 to-fuchsia-600 text-white">
@@ -171,36 +171,31 @@
                                             aria-haspopup="true" aria-expanded="false"
                                         ></button>
 
-                                        {{-- Popover palette --}}
+                                        {{-- Desktop popover --}}
                                         <div id="colorPopover"
-                                             class="hidden absolute z-30 top-10 left-2 w-52 rounded-xl border border-gray-200 bg-white/95 shadow-lg backdrop-blur p-3">
+                                            class="hidden absolute z-30 top-10 left-2 w-56 rounded-xl border border-gray-200 bg-white/95 shadow-lg backdrop-blur p-3">
                                             <div class="text-xs font-semibold text-gray-600 mb-2">Pick a color</div>
-                                            <div class="grid grid-cols-6 gap-2">
-                                                @foreach($allColors as $c)
-                                                    @php
-                                                        $isMine  = $c === $myColor;
-                                                        $isTaken = in_array($c, $takenByOthers, true);
-                                                    @endphp
-                                                    <button
-                                                        type="button"
-                                                        class="h-7 w-7 rounded-full ring-2 transition
-                                                               {{ $isMine ? 'ring-indigo-600 ring-offset-2 ring-offset-white' : 'ring-transparent hover:scale-105' }}
-                                                               {{ $isTaken && !$isMine ? 'opacity-40 cursor-not-allowed' : '' }}"
-                                                        style="background-color: {{ $c }};"
-                                                        data-color="{{ $c }}"
-                                                        {{ $isTaken && !$isMine ? 'disabled' : '' }}
-                                                        title="{{ $isMine ? 'Current' : ($isTaken ? 'Taken' : 'Choose') }}"
-                                                    ></button>
-                                                @endforeach
-                                            </div>
+                                            <div class="grid grid-cols-6 gap-2" data-role="palette-desktop"></div>
                                             <div class="mt-2 text-[10px] text-gray-500">Colors taken by others are disabled.</div>
                                         </div>
-                                    @else
-                                        {{-- Static dot for others (or once game started) --}}
-                                        <span class="inline-block size-3 rounded-full ring-2 ring-offset-2 ring-offset-white"
-                                              style="background-color: {{ $dotColor }};"></span>
-                                    @endif
 
+                                        {{-- Mobile bottom sheet --}}
+                                        <div id="colorSheet"
+                                            class="hidden fixed inset-0 z-50 sm:hidden">
+                                            <div class="absolute inset-0 bg-black/40" data-role="sheet-backdrop"></div>
+                                            <div class="absolute inset-x-0 bottom-0 rounded-t-2xl bg-white shadow-xl p-4">
+                                                <div class="flex items-center justify-between">
+                                                    <div class="text-sm font-semibold text-gray-900">Pick a color</div>
+                                                    <button type="button" class="px-2 py-1 text-sm rounded-md bg-gray-100 hover:bg-gray-200" data-role="sheet-close">Close</button>
+                                                </div>
+                                                <div class="mt-3 grid grid-cols-6 gap-2" data-role="palette-mobile"></div>
+                                                <div class="mt-2 text-[11px] text-gray-500">Colors taken by others are disabled.</div>
+                                            </div>
+                                        </div>
+                                    @else
+                                        <span class="inline-block size-3 rounded-full ring-2 ring-offset-2 ring-offset-white"
+                                            style="background-color: {{ $dotColor }};"></span>
+                                    @endif
                                     <span class="font-medium text-gray-800">
                                         {{ $player->name }}
                                         @if ($player->id === $room->creator->id)
@@ -238,8 +233,54 @@
 
     {{-- Scripts --}}
     <script>
-        // Expose helpers so other AJAX handlers (like color change) can reuse them
-        window.updateCapacity = function(current) {
+        if (!window.__colorPicker) {
+            window.__colorPicker = (function () {
+                let myDot = null, pop = null, sheet = null;
+
+                const hideDesktop = () => {
+                if (pop) pop.classList.add('hidden');
+                if (myDot) myDot.setAttribute('aria-expanded','false');
+                };
+                const hideMobile = () => { if (sheet) sheet.classList.add('hidden'); };
+
+                const onDocClick = (e) => {
+                // close only if clicking outside the popover and not on the dot
+                if (pop && !pop.contains(e.target) && e.target !== myDot) hideDesktop();
+                };
+                const onEsc = (e) => {
+                if (e.key === 'Escape') { hideDesktop(); hideMobile(); }
+                };
+
+                // Attach global listeners once
+                if (!window.__cpGlobalBound) {
+                document.addEventListener('click', onDocClick);
+                document.addEventListener('keydown', onEsc);
+                window.__cpGlobalBound = true;
+                }
+
+                // bind fresh elements after each rebuild
+                function bind(nextDot, nextPop, nextSheet) {
+                myDot  = nextDot || null;
+                pop    = nextPop || null;
+                sheet  = nextSheet || null;
+                }
+
+                return { bind, hideDesktop, hideMobile };
+            })();
+            }
+
+            // ===============================
+            // Shared helpers
+            // ===============================
+            function normalizeColor(input) {
+            const ctx = document.createElement('canvas').getContext('2d');
+            ctx.fillStyle = '#000';
+            ctx.fillStyle = String(input || '');
+            return ctx.fillStyle.toLowerCase(); // canonical hex-like string
+            }
+
+            // Capacity UI
+            window.updateCapacity = function(current) {
             const meta = document.getElementById('room-meta');
             const maxSeats = parseInt(meta?.dataset.roomMax || '1', 10);
             const capacityCount   = document.getElementById('capacityCount');
@@ -250,13 +291,16 @@
             if (capacityCount)   capacityCount.textContent   = `${current}/${maxSeats}`;
             if (capacityBar)     capacityBar.style.width     = `${pct}%`;
             if (capacityPctText) capacityPctText.textContent = `${pct}% full`;
-        };
+            };
 
-        window.rebuildPlayersList = function(players) {
+            // Rebuild players list from payload (authoritative)
+            // Also re-wires the color picker for "me" if game not started.
+            window.rebuildPlayersList = function(players) {
             const playersList = document.getElementById('playersList');
             if (!playersList) return;
 
             playersList.innerHTML = '';
+
             players.forEach(player => {
                 const li = document.createElement('li');
                 li.id = `player-${player.id}`;
@@ -269,177 +313,176 @@
                 const active  = {{ $activeGame ? 'true' : 'false' }};
 
                 const dot = (!active && isMe)
-                    ? `<button id="myColorDot" type="button"
-                               class="inline-block size-3 rounded-full ring-2 ring-offset-2 ring-offset-white outline-none focus:ring-indigo-500"
-                               style="background-color:${color};" aria-haspopup="true" aria-expanded="false"></button>
-                       <div id="colorPopover"
-                            class="hidden absolute z-30 top-10 left-2 w-52 rounded-xl border border-gray-200 bg-white/95 shadow-lg backdrop-blur p-3">
-                            <div class="text-xs font-semibold text-gray-600 mb-2">Pick a color</div>
-                            <div class="grid grid-cols-6 gap-2">
-                                @foreach($allColors as $c)
-                                    <button type="button"
-                                            class="h-7 w-7 rounded-full ring-2 transition ring-transparent hover:scale-105"
-                                            style="background-color: {{ $c }};"
-                                            data-color="{{ $c }}"></button>
-                                @endforeach
-                            </div>
-                            <div class="mt-2 text-[10px] text-gray-500">Colors taken by others are disabled.</div>
-                        </div>`
-                    : `<span class="inline-block size-3 rounded-full ring-2 ring-offset-2 ring-offset-white" style="background-color:${color}"></span>`;
+                ? `<button id="myColorDot" type="button"
+                            class="inline-block size-3 rounded-full ring-2 ring-offset-2 ring-offset-white outline-none focus:ring-indigo-500"
+                            style="background-color:${color};" aria-haspopup="true" aria-expanded="false"></button>
+                    <div id="colorPopover"
+                        class="hidden absolute z-30 top-10 left-2 w-56 rounded-xl border border-gray-200 bg-white/95 shadow-lg backdrop-blur p-3">
+                        <div class="text-xs font-semibold text-gray-600 mb-2">Pick a color</div>
+                        <div class="grid grid-cols-6 gap-2" data-role="palette-desktop"></div>
+                        <div class="mt-2 text-[10px] text-gray-500">Colors taken by others are disabled.</div>
+                    </div>
+                    <div id="colorSheet" class="hidden fixed inset-0 z-50 sm:hidden">
+                    <div class="absolute inset-0 bg-black/40" data-role="sheet-backdrop"></div>
+                    <div class="absolute inset-x-0 bottom-0 rounded-t-2xl bg-white shadow-xl p-4">
+                        <div class="flex items-center justify-between">
+                        <div class="text-sm font-semibold text-gray-900">Pick a color</div>
+                        <button type="button" class="px-2 py-1 text-sm rounded-md bg-gray-100 hover:bg-gray-200" data-role="sheet-close">Close</button>
+                        </div>
+                        <div class="mt-3 grid grid-cols-6 gap-2" data-role="palette-mobile"></div>
+                        <div class="mt-2 text-[11px] text-gray-500">Colors taken by others are disabled.</div>
+                    </div>
+                    </div>`
+                : `<span class="inline-block size-3 rounded-full ring-2 ring-offset-2 ring-offset-white" style="background-color:${color}"></span>`;
 
                 li.innerHTML = `
-                    ${dot}
-                    <span class="font-medium text-gray-800">
-                        ${player.name}
-                        ${isHost ? '<span class="ml-2 text-xs text-amber-600 font-semibold">host</span>' : ''}
-                    </span>
-                    ${canKick
-                        ? '<button class="ml-auto inline-flex items-center gap-1 rounded-lg px-2 py-1 text-xs font-semibold bg-rose-50 text-rose-600 hover:bg-rose-100 transition">Kick</button>'
-                        : ''
-                    }
+                ${dot}
+                <span class="font-medium text-gray-800">
+                    ${player.name}
+                    ${isHost ? '<span class="ml-2 text-xs text-amber-600 font-semibold">host</span>' : ''}
+                </span>
+                ${canKick
+                    ? '<button class="ml-auto inline-flex items-center gap-1 rounded-lg px-2 py-1 text-xs font-semibold bg-rose-50 text-rose-600 hover:bg-rose-100 transition">Kick</button>'
+                    : ''
+                }
                 `;
 
                 if (canKick) {
-                    li.querySelector('button:last-of-type')?.addEventListener('click', () => openKickModal(player.id, player.name));
+                li.querySelector('button:last-of-type')?.addEventListener('click', () => openKickModal(player.id, player.name));
                 }
 
                 playersList.appendChild(li);
             });
 
             window.updateCapacity(players.length);
-            wireColorPicker(); // rebind picker if my row was rebuilt
-        };
+            wireColorPicker(); // rebind picker if my row exists
+            };
 
-        function wireColorPicker() {
+            // ===============================
+            // Color Picker wiring
+            // ===============================
+            function wireColorPicker() {
             const myDot = document.getElementById('myColorDot');
             const pop   = document.getElementById('colorPopover');
-            if (!myDot || !pop) return;
+            const sheet = document.getElementById('colorSheet');
+            if (!myDot) return;
 
-            const csrf  = document.querySelector('meta[name="csrf-token"]')?.content || '';
-            const hide = () => { pop.classList.add('hidden'); myDot.setAttribute('aria-expanded','false'); };
-            const show = () => { pop.classList.remove('hidden'); myDot.setAttribute('aria-expanded','true'); };
+            // (re)bind controller to latest elements
+            window.__colorPicker.bind(myDot, pop, sheet);
 
-            myDot.onclick = (e) => { e.stopPropagation(); pop.classList.contains('hidden') ? show() : hide(); };
-            document.addEventListener('click', (e) => { if (!pop.contains(e.target) && e.target !== myDot) hide(); });
-            document.addEventListener('keydown', (e) => { if (e.key === 'Escape') hide(); });
+            const csrf   = document.querySelector('meta[name="csrf-token"]')?.content || '';
+            const isMobile = () => window.matchMedia('(max-width: 639px)').matches; // Tailwind sm breakpoint
+            const showDesktop = () => { if (pop) { pop.classList.remove('hidden'); myDot.setAttribute('aria-expanded','true'); } };
+            const hideDesktop = window.__colorPicker.hideDesktop;
+            const showMobile  = () => { if (sheet){ sheet.classList.remove('hidden'); } };
+            const hideMobile  = window.__colorPicker.hideMobile;
 
-            // Disable colors taken by others using current DOM
-            const taken = new Set(
-                Array.from(document.querySelectorAll('#playersList > li .inline-block.size-3'))
-                    .map(el => el.style?.backgroundColor)
-                    .filter(Boolean)
-            );
+            const COLORS = @json(config('colors.list'));
 
-            pop.querySelectorAll('button[data-color]').forEach(btn => {
-                const c = btn.dataset.color;
-                // keep my current color selectable even if present in taken set
-                const myCurrent = myDot.style.backgroundColor;
-                const rgb = btn.style.backgroundColor;
-                const isTaken = (rgb && rgb !== myCurrent && taken.has(rgb));
-                btn.disabled = isTaken;
-                if (isTaken) btn.classList.add('opacity-40','cursor-not-allowed');
+            function takenColorsSet() {
+                // collect all dots’ background colors (excluding my current)
+                const dots = Array.from(document.querySelectorAll('#playersList .inline-block.size-3'));
+                const mine = normalizeColor(myDot.style.backgroundColor);
+                const set  = new Set(dots.map(el => normalizeColor(el.style.backgroundColor)).filter(Boolean));
+                set.delete(mine);
+                return set;
+            }
 
-                btn.onclick = async () => {
-                    if (btn.disabled) return;
-                    try {
-                        const res = await axios.post(
-                            "{{ route('rooms.color', $room) }}",
-                            { color: c },
-                            { headers: { 'X-CSRF-TOKEN': csrf } }
-                        );
-                        if (Array.isArray(res?.data?.players)) {
-                            window.rebuildPlayersList(res.data.players);
-                        } else {
-                            myDot.style.backgroundColor = c;
-                        }
-                    } catch (err) {
-                        alert(err?.response?.data?.message || 'Failed to change color');
-                    } finally {
-                        hide();
-                    }
-                };
-            });
-        }
+            function paintPalette(container) {
+                if (!container) return;
+                container.innerHTML = '';
+                const taken = takenColorsSet();
+                const myCurrent = normalizeColor(myDot.style.backgroundColor);
 
-        document.addEventListener('DOMContentLoaded', () => {
-            // Copy room code
-            const btn = document.getElementById('copyCodeBtn');
-            btn?.addEventListener('click', async () => {
+                COLORS.forEach(hex => {
+                const btn = document.createElement('button');
+                btn.type  = 'button';
+                btn.className = 'h-7 w-7 rounded-full ring-2 transition ring-transparent hover:scale-105';
+                btn.style.backgroundColor = hex;
+
+                const normHex = normalizeColor(hex);
+                const isTaken = taken.has(normHex);
+                const isMine  = normHex === myCurrent;
+
+                if (isTaken && !isMine) {
+                    btn.disabled = true;
+                    btn.classList.add('opacity-40','cursor-not-allowed');
+                }
+
+                btn.onclick = () => applyColor(hex); // no stacked listeners
+                container.appendChild(btn);
+                });
+            }
+
+            async function applyColor(colorHex) {
+                const prev = myDot.style.backgroundColor;
+                // Optimistic local UI
+                myDot.style.backgroundColor = colorHex;
+
+                let ok = false;
                 try {
-                    await navigator.clipboard.writeText(btn.dataset.code);
-                    const old = btn.innerHTML;
-                    btn.innerHTML = 'Copied!';
-                    setTimeout(() => btn.innerHTML = old, 1200);
-                } catch {}
-            });
+                const res = await axios.post("{{ route('rooms.color', $room) }}", { color: colorHex }, { headers: { 'X-CSRF-TOKEN': csrf } });
 
-            const meta = document.getElementById('room-meta');
-            if (!meta) return;
-
-            const roomId = meta.dataset.roomId;
-            const ch = window.Echo.channel(`room.${roomId}`);
-
-            // Redirect everyone to game when host starts it
-            const gameUrl = "{{ route('games.show', $room) }}";
-            ch.listen('.GameStarted', (e) => {
-                if (!e || typeof e !== 'object') return;
-                if (window.location.href !== gameUrl) window.location.href = gameUrl;
-            });
-
-            // RoomUpdated is source of truth for players list
-            ch.listen('.RoomUpdated', (e) => {
-                if (Array.isArray(e.players)) {
-                    window.rebuildPlayersList(e.players);
-                }
-            });
-
-            // Also listen for join/leave (if emitted elsewhere)
-            ch.listen('.PlayerJoined', (e) => {
-                if (Array.isArray(e.players)) window.rebuildPlayersList(e.players);
-            });
-            ch.listen('.PlayerLeft', (e) => {
-                if (Array.isArray(e.players)) window.rebuildPlayersList(e.players);
-            });
-
-            // If you get kicked while on this page, bounce to welcome
-            ch.listen('.PlayerKicked', (e) => {
-                @auth
-                if (e.playerId === {{ auth()->id() }}) {
-                    window.location.href = "{{ route('welcome') }}";
-                    return;
-                }
-                @endauth
-                if (Array.isArray(e.players)) {
-                    window.rebuildPlayersList(e.players);
+                // Authoritative list → rebuild → rebind picker
+                if (Array.isArray(res?.data?.players)) {
+                    window.rebuildPlayersList(res.data.players);
                 } else {
-                    // Fallback: update capacity quickly
-                    const current = document.querySelectorAll('#playersList > li').length;
-                    window.updateCapacity(current);
+                    // fallback: repaint palettes
+                    paintPalettes();
                 }
-            });
+                ok = true;
+                } catch (err) {
+                // rollback, keep UI open so they can choose again
+                myDot.style.backgroundColor = prev;
+                alert(err?.response?.data?.message || 'Failed to change color');
+                paintPalettes();
+                } finally {
+                if (ok) { hideDesktop(); hideMobile(); }
+                }
+            }
 
-            // Initial capacity sync + wire color palette
-            window.updateCapacity(document.querySelectorAll('#playersList > li').length);
-            wireColorPicker();
-        });
+            // open on click (no auto-open on load)
+            myDot.onclick = (e) => {
+                e.stopPropagation();
+                if (isMobile()) showMobile();
+                else pop?.classList.contains('hidden') ? showDesktop() : hideDesktop();
+            };
 
-        // Kick modal helpers
-        let _pendingKick = { id: null, name: '' };
+            // mobile closers (avoid stacked handlers)
+            const backdrop = sheet?.querySelector('[data-role="sheet-backdrop"]');
+            const closer   = sheet?.querySelector('[data-role="sheet-close"]');
+            if (backdrop) backdrop.onclick = hideMobile;
+            if (closer)   closer.onclick   = hideMobile;
 
-        window.openKickModal = function(userId, userName) {
+            function paintPalettes() {
+                paintPalette(pop?.querySelector('[data-role="palette-desktop"]'));
+                paintPalette(sheet?.querySelector('[data-role="palette-mobile"]'));
+            }
+
+            // initial paint + keep palettes fresh on resize
+            paintPalettes();
+            window.addEventListener('resize', paintPalettes, { passive: true });
+            }
+
+            // ===============================
+            // Kick modal helpers
+            // ===============================
+            let _pendingKick = { id: null, name: '' };
+
+            window.openKickModal = function(userId, userName) {
             _pendingKick.id   = userId;
             _pendingKick.name = userName || '';
             const txt = document.getElementById('kickConfirmText');
             if (txt) txt.textContent = `Are you sure you want to remove ${_pendingKick.name || 'this player'} from the room?`;
             document.getElementById('kickConfirmModal')?.classList.remove('hidden');
-        };
+            };
 
-        window.closeKickModal = function() {
+            window.closeKickModal = function() {
             document.getElementById('kickConfirmModal')?.classList.add('hidden');
             _pendingKick = { id: null, name: '' };
-        };
+            };
 
-        async function confirmKick() {
+            async function confirmKick() {
             const meta = document.getElementById('room-meta');
             const roomId = meta?.dataset.roomId;
             if (!_pendingKick.id || !roomId) return;
@@ -451,14 +494,80 @@
             } finally {
                 window.closeKickModal();
             }
-        }
+            }
 
-        document.addEventListener('DOMContentLoaded', () => {
+            // ===============================
+            // Page wiring
+            // ===============================
+            document.addEventListener('DOMContentLoaded', () => {
+            // Copy room code
+            const copyBtn = document.getElementById('copyCodeBtn');
+            if (copyBtn) {
+                copyBtn.addEventListener('click', async () => {
+                try {
+                    await navigator.clipboard.writeText(copyBtn.dataset.code);
+                    const old = copyBtn.innerHTML;
+                    copyBtn.innerHTML = 'Copied!';
+                    setTimeout(() => (copyBtn.innerHTML = old), 1200);
+                } catch {}
+                });
+            }
+
+            // Kick modal buttons
             document.getElementById('kickConfirmBtn')?.addEventListener('click', confirmKick);
             document.getElementById('kickedOkBtn')?.addEventListener('click', () => {
                 window.location.href = "{{ route('welcome') }}";
             });
-        });
+
+            const meta = document.getElementById('room-meta');
+            if (!meta) return;
+
+            // Echo channel listeners
+            const roomId = meta.dataset.roomId;
+            const ch = window.Echo.channel(`room.${roomId}`);
+
+            // Start game -> redirect
+            const gameUrl = "{{ route('games.show', $room) }}";
+            ch.listen('.GameStarted', (e) => {
+                if (!e || typeof e !== 'object') return;
+                if (window.location.href !== gameUrl) window.location.href = gameUrl;
+            });
+
+            // RoomUpdated -> rebuild list
+            ch.listen('.RoomUpdated', (e) => {
+                if (Array.isArray(e.players)) {
+                    window.rebuildPlayersList(e.players);
+                }
+            });
+
+            // Join/Leave fallbacks
+            ch.listen('.PlayerJoined', (e) => {
+                if (Array.isArray(e.players)) window.rebuildPlayersList(e.players);
+            });
+            ch.listen('.PlayerLeft', (e) => {
+                if (Array.isArray(e.players)) window.rebuildPlayersList(e.players);
+            });
+
+            // If kicked while here -> bounce home; else update list/capacity
+            ch.listen('.PlayerKicked', (e) => {
+                @auth
+                if (e.playerId === {{ auth()->id() }}) {
+                window.location.href = "{{ route('welcome') }}";
+                return;
+                }
+                @endauth
+                if (Array.isArray(e.players)) {
+                window.rebuildPlayersList(e.players);
+                } else {
+                const current = document.querySelectorAll('#playersList > li').length;
+                window.updateCapacity(current);
+                }
+            });
+
+            // Initial capacity + color picker wire
+            window.updateCapacity(document.querySelectorAll('#playersList > li').length);
+            wireColorPicker();
+            });
     </script>
 
     {{-- Kick confirm modal --}}
