@@ -7,6 +7,7 @@ import axios from "axios";
 export default function initMinesweeper(config) {
     // Extract config values
     let {
+        userId,            // 👈 make sure you pass this from blade: userId: {{ auth()->id() }}
         roomId,
         playerColor,
         rows,
@@ -28,9 +29,30 @@ export default function initMinesweeper(config) {
     let board = [];
     let flagsPlaced = 0;
     let gameOver = false;
+    let isAllowed = true; // 👈 gets flipped if you’re kicked
 
     axios.defaults.headers.common["X-CSRF-TOKEN"] =
         document.querySelector('meta[name="csrf-token"]').content;
+    axios.defaults.headers.common["X-Requested-With"] = "XMLHttpRequest";
+
+    // 🔒 Redirect on unauthorized/forbidden (kicked or not in room)
+    axios.interceptors.response.use(
+        (r) => r,
+        (err) => {
+            const status = err?.response?.status;
+            if (status === 401 || status === 403) {
+                // block UI, show message, and bounce home
+                try {
+                    isAllowed = false;
+                    disableBoard("You were removed from the room.");
+                } finally {
+                    window.location.href = "/";
+                }
+                return;
+            }
+            return Promise.reject(err);
+        }
+    );
 
     // ---- Local cooldown config ----
     const CELL_COOLDOWN_MS = 800;         // per-cell: 1 action per 0.8s
@@ -42,39 +64,47 @@ export default function initMinesweeper(config) {
     const recentActions = [];             // queue of timestamps
 
     function isRateLimitedLocal(r, c) {
-    const now = performance.now();
-    const key = `${r}-${c}`;
+        const now = performance.now();
+        const key = `${r}-${c}`;
 
-    // Per-cell cooldown
-    const last = lastCellActionAt.get(key) || 0;
-    if (now - last < CELL_COOLDOWN_MS) return { ok: false, reason: 'cell' };
+        // Per-cell cooldown
+        const last = lastCellActionAt.get(key) || 0;
+        if (now - last < CELL_COOLDOWN_MS) return { ok: false, reason: 'cell' };
 
-    // Global burst guard
-    while (recentActions.length && now - recentActions[0] > BURST_WINDOW_MS) {
-        recentActions.shift();
-    }
-    if (recentActions.length >= BURST_MAX) return { ok: false, reason: 'burst' };
+        // Global burst guard
+        while (recentActions.length && now - recentActions[0] > BURST_WINDOW_MS) {
+            recentActions.shift();
+        }
+        if (recentActions.length >= BURST_MAX) return { ok: false, reason: 'burst' };
 
-    return { ok: true };
+        return { ok: true };
     }
 
     function markAction(r, c) {
-    const now = performance.now();
-    lastCellActionAt.set(`${r}-${c}`, now);
-    recentActions.push(now);
+        const now = performance.now();
+        lastCellActionAt.set(`${r}-${c}`, now);
+        recentActions.push(now);
     }
 
     function blip(msg) {
-    if (!statusMessage) return;
-    const old = statusMessage.textContent;
-    const oldColor = statusMessage.style.color;
-    statusMessage.textContent = msg;
-    statusMessage.style.color = '#374151'; // gray-700
-    clearTimeout(statusMessage._t);
-    statusMessage._t = setTimeout(() => {
-        statusMessage.textContent = (old.includes('Win') || old.includes('Over')) ? old : '';
-        statusMessage.style.color = oldColor || '';
-    }, 800);
+        if (!statusMessage) return;
+        const old = statusMessage.textContent;
+        const oldColor = statusMessage.style.color;
+        statusMessage.textContent = msg;
+        statusMessage.style.color = '#374151'; // gray-700
+        clearTimeout(statusMessage._t);
+        statusMessage._t = setTimeout(() => {
+            statusMessage.textContent = (old && (old.includes('Win') || old.includes('Over'))) ? old : '';
+            statusMessage.style.color = oldColor || '';
+        }, 800);
+    }
+
+    function disableBoard(message) {
+        try {
+            if (message && statusMessage) statusMessage.textContent = message;
+            const buttons = gameContainer?.querySelectorAll("button");
+            buttons?.forEach((b) => (b.disabled = true));
+        } catch {}
     }
 
     /**
@@ -89,8 +119,8 @@ export default function initMinesweeper(config) {
         board = [];
         flagsPlaced = 0;
         gameOver = false;
-        statusMessage.textContent = "";
-    
+        if (isAllowed && statusMessage) statusMessage.textContent = "";
+
         // ✅ 1. Build board structure first from initialBoard
         for (let r = 0; r < rows; r++) {
             board[r] = [];
@@ -109,7 +139,7 @@ export default function initMinesweeper(config) {
                 };
             }
         }
-    
+
         // ✅ 2. Now build buttons and attach them to board[r][c]
         for (let r = 0; r < rows; r++) {
             for (let c = 0; c < cols; c++) {
@@ -117,18 +147,22 @@ export default function initMinesweeper(config) {
                 btn.className = "ms-cell";
                 btn.dataset.row = r;
                 btn.dataset.col = c;
-    
-                btn.addEventListener("click", () => reveal(r, c));
+
+                btn.addEventListener("click", () => {
+                    if (!isAllowed) return;
+                    reveal(r, c);
+                });
                 btn.addEventListener("contextmenu", (e) => {
+                    if (!isAllowed) return;
                     e.preventDefault();
                     toggleFlag(r, c);
                 });
-    
+
                 gameContainer.appendChild(btn);
                 board[r][c].element = btn;
-    
+
                 const key = `${r}-${c}`;
-    
+
                 // Restore flags
                 if (board[r][c].flagged) {
                     flagsPlaced++;
@@ -142,7 +176,7 @@ export default function initMinesweeper(config) {
                     btn.textContent = "🚩";
                     btn.style.backgroundColor = board[r][c].flagColor;
                 }
-    
+
                 // Restore revealed
                 if (!board[r][c].flagged) {
                     if (board[r][c].revealed) {
@@ -154,17 +188,16 @@ export default function initMinesweeper(config) {
                 }
             }
         }
-    
+
         updateMineCounter();
     }
-    
 
     function updateMineCounter() {
         mineCounter.textContent = `Mines: ${mines - flagsPlaced}`;
     }
 
     function toggleFlag(r, c) {
-        if (gameOver) return;
+        if (!isAllowed || gameOver) return;
         const cell = board[r][c];
         if (!cell || cell.revealed) return;
 
@@ -200,7 +233,7 @@ export default function initMinesweeper(config) {
     }
 
     function reveal(r, c) {
-        if (gameOver) return;
+        if (!isAllowed || gameOver) return;
         const cell = board[r]?.[c];
         if (!cell) return;
 
@@ -210,16 +243,16 @@ export default function initMinesweeper(config) {
             return;
         }
         markAction(r, c);
-    
+
         // ✅ local hard guards
         if (cell.flagged) return;   // <- don't reveal flagged
         if (cell.revealed) return;  // <- already revealed, skip
-    
+
         const toReveal = floodRevealCollect(r, c);
         if (!toReveal.length) return;
-    
+
         toReveal.forEach(({ row, col }) => revealCell(row, col));
-    
+
         if (toReveal.some(x => board[x.row][x.col].mine)) {
             gameOver = true;
             statusMessage.textContent = "Game Over!";
@@ -228,7 +261,7 @@ export default function initMinesweeper(config) {
                 if (cell.element) cell.element.disabled = true;
             });
         }
-    
+
         const firstTile = toReveal[0];
         axios.post(updateUrl, {
             roomId: roomId,
@@ -236,7 +269,7 @@ export default function initMinesweeper(config) {
             col: firstTile.col,
             action: "reveal"
         }).catch(err => console.error("reveal update failed", err));
-    
+
         checkWin();
     }
 
@@ -317,77 +350,80 @@ export default function initMinesweeper(config) {
 
         const channel = window.Echo.channel(`room.${roomId}`);
         channel.listen(".TileUpdated", (e) => {
+            if (!isAllowed) return;
+
             if (e.action === "flag") {
-              const cell = board[e.row]?.[e.col];
-              if (!cell) return;
-              cell.flagged = !!e.value;
-              if (cell.flagged) {
-                cell.flagColor = e.playerColor ?? "#000";
-                cell.element.textContent = "🚩";
-                cell.element.style.backgroundColor = cell.flagColor;
-              } else {
-                cell.flagColor = null;
-                cell.element.textContent = "";
-                cell.element.style.backgroundColor = "";
-              }
-              flagsPlaced = board.flat().filter(x => x.flagged).length;
-              updateMineCounter();
-              return;
-            }
-          
-            if (e.action === "reveal") {
-              // Reveal cells from the server
-              (e.value || []).forEach(({ row, col, mine, count }) => {
-                const cell = board[row]?.[col];
+                const cell = board[e.row]?.[e.col];
                 if (!cell) return;
-          
-                // If this is a final (gameOver) frame and locally flagged, clear visuals
-                if (e.gameOver && cell.flagged) {
-                  cell.flagged = false;
-                  cell.flagColor = null;
-                  if (cell.element) {
+                cell.flagged = !!e.value;
+                if (cell.flagged) {
+                    cell.flagColor = e.playerColor ?? "#000";
+                    cell.element.textContent = "🚩";
+                    cell.element.style.backgroundColor = cell.flagColor;
+                } else {
+                    cell.flagColor = null;
                     cell.element.textContent = "";
                     cell.element.style.backgroundColor = "";
-                    cell.element.style.boxShadow = "";
-                  }
-                  flagsPlaced = Math.max(0, flagsPlaced - 1);
                 }
-          
-                if (typeof mine !== "undefined")  cell.mine  = !!mine;
-                if (typeof count !== "undefined") cell.count = count;
-          
-                // Respect local flags only for non-final updates
-                if (!e.gameOver && (cell.revealed || cell.flagged)) return;
-          
-                revealCell(row, col, true);
-              });
-          
-              if (e.gameOver) {
-                // Determine outcome: loss if any revealed cell is a mine, else win
-                const anyMine = Array.isArray(e.value) && e.value.some(v => v && v.mine);
-                gameOver = true;
-          
-                if (anyMine) {
-                  statusMessage.textContent = "Game Over!";
-                } else {
-                  statusMessage.textContent = "You Win! 🎉";
-                  // make mines look 'safe/celebratory' if you like
-                  board.flat().forEach(c => {
-                    if (c.mine && c.element) {
-                      c.element.className =
-                        "w-12 h-12 bg-green-500 rounded flex items-center justify-center text-sm font-bold text-white";
-                      c.element.textContent = "💣";
-                    }
-                  });
-                }
-          
+                flagsPlaced = board.flat().filter(x => x.flagged).length;
                 updateMineCounter();
-                board.flat().forEach(c => { if (c.element) c.element.disabled = true; });
-              }
+                return;
             }
-        });          
+
+            if (e.action === "reveal") {
+                // Reveal cells from the server
+                (e.value || []).forEach(({ row, col, mine, count }) => {
+                    const cell = board[row]?.[col];
+                    if (!cell) return;
+
+                    // If this is a final (gameOver) frame and locally flagged, clear visuals
+                    if (e.gameOver && cell.flagged) {
+                        cell.flagged = false;
+                        cell.flagColor = null;
+                        if (cell.element) {
+                            cell.element.textContent = "";
+                            cell.element.style.backgroundColor = "";
+                            cell.element.style.boxShadow = "";
+                        }
+                        flagsPlaced = Math.max(0, flagsPlaced - 1);
+                    }
+
+                    if (typeof mine !== "undefined")  cell.mine  = !!mine;
+                    if (typeof count !== "undefined") cell.count = count;
+
+                    // Respect local flags only for non-final updates
+                    if (!e.gameOver && (cell.revealed || cell.flagged)) return;
+
+                    revealCell(row, col, true);
+                });
+
+                if (e.gameOver) {
+                    // Determine outcome: loss if any revealed cell is a mine, else win
+                    const anyMine = Array.isArray(e.value) && e.value.some(v => v && v.mine);
+                    gameOver = true;
+
+                    if (anyMine) {
+                        statusMessage.textContent = "Game Over!";
+                    } else {
+                        statusMessage.textContent = "You Win! 🎉";
+                        // make mines look 'safe/celebratory' if you like
+                        board.flat().forEach(c => {
+                            if (c.mine && c.element) {
+                                c.element.className =
+                                    "w-12 h-12 bg-green-500 rounded flex items-center justify-center text-sm font-bold text-white";
+                                c.element.textContent = "💣";
+                            }
+                        });
+                    }
+
+                    updateMineCounter();
+                    board.flat().forEach(c => { if (c.element) c.element.disabled = true; });
+                }
+            }
+        });
 
         channel.listen(".GameStarted", (e) => {
+            if (!isAllowed) return;
             initialBoard = Array.isArray(e.board) ? e.board : JSON.parse(e.board);
             rows = e.rows;
             cols = e.cols;
@@ -399,6 +435,17 @@ export default function initMinesweeper(config) {
 
             initGame();
         });
+
+        // 🚨 If *you* get kicked while in-game, disable and redirect
+        channel.listen(".PlayerKicked", (e) => {
+            if (Number(e?.playerId) === Number(userId)) {
+                isAllowed = false;
+                disableBoard("You were removed from the room.");
+                setTimeout(() => {
+                    window.location.href = "/";
+                }, 200);
+            }
+        });
     }
 
     /**
@@ -406,22 +453,23 @@ export default function initMinesweeper(config) {
      */
     function setupRestartButton() {
         if (!restartBtn) return; // ✅ Skip if player is not the creator
-    
+
         restartBtn.addEventListener("click", () => {
+            if (!isAllowed) return;
             axios.post(config.restartUrl)
                 .then(res => {
                     if (res.data?.status !== "ok")
                         throw new Error(res.data?.message || "Failed to restart");
-    
+
                     if (res.data.board) {
                         initialBoard = res.data.board;
                         rows = res.data.rows ?? rows;
                         cols = res.data.cols ?? cols;
                         mines = res.data.mines ?? mines;
-    
+
                         savedFlags = {};
                         savedRevealed = {};
-    
+
                         initGame();
                     }
                 })
@@ -431,7 +479,6 @@ export default function initMinesweeper(config) {
                 });
         });
     }
-    
 
     // Boot game
     initGame();

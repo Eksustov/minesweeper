@@ -54,6 +54,7 @@
     <!-- Game configuration -->
     <script>
         window.config = {
+            userId: {{ auth()->id() }},
             roomId: {{ $room->id }},
             playerColor: "{{ $room->players->find(auth()->id())?->pivot->color ?? '#000000' }}",
             rows: {{ $rows }},
