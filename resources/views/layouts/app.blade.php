@@ -17,7 +17,6 @@
         <script src="https://cdn.jsdelivr.net/npm/axios/dist/axios.min.js"></script>
         @vite([
             'resources/css/app.css',
-            'resources/js/bootstrap.js', // Echo setup
             'resources/js/app.js',       // global JS
             'resources/js/pages/room.js'       // room subscription
         ])
