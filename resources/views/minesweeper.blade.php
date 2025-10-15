@@ -67,6 +67,4 @@
             restartUrl: "{{ route('games.restart', $room->id) }}"
         };
     </script>
-
-    @vite('resources/js/minesweeper.js')
 </x-app-layout>
