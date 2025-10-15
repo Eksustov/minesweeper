@@ -15,12 +15,7 @@
 
         <!-- Scripts -->
         <script src="https://cdn.jsdelivr.net/npm/axios/dist/axios.min.js"></script>
-        @vite([
-            'resources/css/app.css',
-            'resources/js/bootstrap.js', // Echo setup
-            'resources/js/app.js',       // global JS
-            'resources/js/pages/room.js'       // room subscription
-        ])
+        @vite(['resources/css/app.css','resources/js/app.js'])
     </head>
     <body class="font-sans antialiased">
         <div class="min-h-screen bg-gradient-to-br from-gray-900 via-gray-800 to-gray-700">

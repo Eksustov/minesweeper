@@ -1,6 +1,6 @@
 @section('title', 'Register')
 
-<x-guest-layout>
+<x-guest-layout wide>
     {{-- Animated background + glass styles --}}
     <style>
         @keyframes floaty {
