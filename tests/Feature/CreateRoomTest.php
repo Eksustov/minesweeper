@@ -1,6 +1,6 @@
 <?php
 
-it('is at welcome page', function () {
+it('created a Room', function () {
     $page = visit('/');
     $page->click('Register')
         ->type('name', 'ohio')
