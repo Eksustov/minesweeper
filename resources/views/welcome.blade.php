@@ -109,7 +109,8 @@
                             @elseif($room->players->count() < $room->max_players)
                                 <form method="POST" action="{{ route('rooms.join', $room) }}">
                                     @csrf
-                                    <button type="submit"
+                                    <button id="join_room_from_list" 
+                                        type="submit"
                                         class="bg-green-500 text-white px-4 py-2 rounded-lg hover:bg-green-600 transition-colors shadow-md hover:shadow-lg">
                                         Join
                                     </button>
