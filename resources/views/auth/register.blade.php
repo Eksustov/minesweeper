@@ -113,7 +113,7 @@
                     {{-- Terms (optional) --}}
                     <div class="mt-4">
                         <label class="flex items-start gap-3">
-                            <input type="checkbox" class="mt-1 rounded border-gray-300 text-indigo-600 shadow-sm focus:ring-indigo-500" required>
+                            <input type="checkbox" id="checkbox" class="mt-1 rounded border-gray-300 text-indigo-600 shadow-sm focus:ring-indigo-500" required>
                             <span class="text-sm text-gray-600 dark:text-gray-300">
                                 I agree to the <a href="#" class="font-medium text-indigo-600 hover:text-indigo-500">Terms</a> and
                                 <a href="#" class="font-medium text-indigo-600 hover:text-indigo-500">Privacy Policy</a>.
