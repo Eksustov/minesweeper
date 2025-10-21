@@ -21,8 +21,6 @@ it('joined a Room', function () {
         ->check('checkbox')
         ->press('Register')
         ->wait(2)
-        ->screenshot()
         ->press('Join Room')
-        ->screenshot()
         ->assertSee('Room');
 });

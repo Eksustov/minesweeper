@@ -14,6 +14,5 @@ it('created a Room', function () {
         ->check('checkbox')
         ->click('Register')
         ->click('Create Room')
-        ->screenshot()
         ->assertSee('host');
 });

@@ -11,6 +11,5 @@ it('started a game', function () {
         ->press('Register')
         ->press('Create Room')
         ->press('Start Game')
-        ->screenshot()
         ->assertSee('Minesweeper');
 });
