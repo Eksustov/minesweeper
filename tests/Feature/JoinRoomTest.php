@@ -1,6 +1,6 @@
 <?php
 
-it('Created a Room', function () {
+it('joined a Room', function () {
     $page = visit('/');
     $page->click('Register')
         ->type('name', 'ohio')
@@ -20,8 +20,9 @@ it('Created a Room', function () {
         ->type('password_confirmation', 'ohios123')
         ->check('checkbox')
         ->press('Register')
-        ->press('#join_room_from_list')
         ->wait(2)
+        ->screenshot()
+        ->press('Join Room')
         ->screenshot()
         ->assertSee('Room');
 });

@@ -59,6 +59,7 @@
                     required
                 />
                 <button
+                    id="join-by-code"
                     type="submit"
                     class="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition">
                     Join
@@ -103,16 +104,17 @@
                                 <form method="GET" action="{{ route('rooms.show', $room) }}">
                                     <button type="submit"
                                         class="bg-purple-500 text-white px-4 py-2 rounded-lg hover:bg-purple-600 transition-colors shadow-md hover:shadow-lg">
-                                        Enter
+                                        Enter Room
                                     </button>
                                 </form>
                             @elseif($room->players->count() < $room->max_players)
                                 <form method="POST" action="{{ route('rooms.join', $room) }}">
                                     @csrf
-                                    <button id="join_room_from_list" 
+                                    <button 
+                                        id="join-room-{{ $room->id }}" 
                                         type="submit"
                                         class="bg-green-500 text-white px-4 py-2 rounded-lg hover:bg-green-600 transition-colors shadow-md hover:shadow-lg">
-                                        Join
+                                        Join Room
                                     </button>
                                 </form>
                             @else
@@ -171,7 +173,7 @@
                     <form method="GET" action="/rooms/${room.id}">
                     <button type="submit"
                         class="bg-purple-500 text-white px-4 py-2 rounded-lg hover:bg-purple-600 transition-colors shadow-md hover:shadow-lg">
-                        Enter
+                        Enter Room
                     </button>
                     </form>`;
                 } else if (room.current_players < room.max_players) {
@@ -180,7 +182,7 @@
                     <input type="hidden" name="_token" value="${csrf}">
                     <button type="submit"
                         class="bg-green-500 text-white px-4 py-2 rounded-lg hover:bg-green-600 transition-colors shadow-md hover:shadow-lg">
-                        Join
+                        Join Room
                     </button>
                     </form>`;
                 } else {
