@@ -15,36 +15,42 @@ use Illuminate\View\View;
 class RegisteredUserController extends Controller
 {
     /**
-     * Display the registration view.
+     * Show the registration page.
      */
     public function create(): View
     {
+        // Adjust the view path if yours is different
         return view('auth.register');
     }
 
     /**
      * Handle an incoming registration request.
-     *
-     * @throws \Illuminate\Validation\ValidationException
      */
     public function store(Request $request): RedirectResponse
     {
-        $request->validate([
-            'name' => ['required', 'string', 'max:255'],
-            'email' => ['required', 'string', 'lowercase', 'email', 'max:255', 'unique:'.User::class],
+        $validated = $request->validate([
+            // Only letters, numbers, spaces, underscore, dot, hyphen
+            'name' => ['required', 'string', 'max:50', 'regex:/^[A-Za-z0-9 _.\-]+$/'],
+            'email' => ['required', 'string', 'lowercase', 'email', 'max:255', 'unique:' . User::class],
+            // Strong password (keeps symbols allowed) + confirmation
             'password' => ['required', 'confirmed', Rules\Password::defaults()],
+        ], [
+            'name.regex' => 'Name may contain only letters, numbers, spaces, underscores (_), dots (.) and hyphens (-).',
         ]);
 
+        // Optional sanitation
+        $validated['name'] = preg_replace('/\s+/', ' ', trim($validated['name']));
+
         $user = User::create([
-            'name' => $request->name,
-            'email' => $request->email,
-            'password' => Hash::make($request->password),
+            'name'     => $validated['name'],
+            'email'    => $validated['email'],
+            'password' => Hash::make($validated['password']),
         ]);
 
         event(new Registered($user));
-
         Auth::login($user);
 
-        return redirect(route('welcome', absolute: false));
+        // Send them wherever you prefer after register
+        return redirect()->intended(route('welcome'));
     }
 }

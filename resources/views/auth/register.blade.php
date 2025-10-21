@@ -50,7 +50,17 @@
                     {{-- Name --}}
                     <div>
                         <x-input-label for="name" :value="__('Name')" />
-                        <x-text-input id="name" class="block mt-1 w-full" type="text" name="name" :value="old('name')" required autofocus autocomplete="name" />
+                        <x-text-input
+                            id="name"
+                            class="block mt-1 w-full"
+                            type="text"
+                            name="name"
+                            :value="old('name')"
+                            required
+                            autocomplete="name"
+                            pattern="^[A-Za-z0-9 _.\-]{1,50}$"
+                            title="Only letters, numbers, spaces, underscores (_), dots (.), and hyphens (-) are allowed."
+                        />
                         <x-input-error :messages="$errors->get('name')" class="mt-2" />
                     </div>
 
@@ -143,4 +153,24 @@
             <p class="mt-6 text-center text-xs text-white/80">© {{ now()->year }} Minesweeper Live</p>
         </div>
     </div>
+    <script>
+    document.addEventListener('DOMContentLoaded', () => {
+        const nameInput = document.getElementById('name');
+        if (!nameInput) return;
+
+        const allowed = /^[A-Za-z0-9 _.\-]+$/;
+        nameInput.addEventListener('input', () => {
+            // Strip everything not allowed
+            nameInput.value = nameInput.value.replace(/[^A-Za-z0-9 _.\-]/g, '');
+        });
+
+        // Prevent paste of disallowed characters
+        nameInput.addEventListener('paste', (e) => {
+            e.preventDefault();
+            const text = (e.clipboardData || window.clipboardData).getData('text') || '';
+            const sanitized = text.replace(/[^A-Za-z0-9 _.\-]/g, '');
+            document.execCommand('insertText', false, sanitized);
+        });
+    });
+    </script>
 </x-guest-layout>
