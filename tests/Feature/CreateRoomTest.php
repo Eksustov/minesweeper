@@ -2,7 +2,10 @@
 
 it('created a Room', function () {
     $page = visit('/');
-    $page->click('Register')
+    $page->click('Create Room')
+        ->click('Create an account')
+        ->screenshot()
+        ->assertSee('Register')
         ->type('name', 'ohio')
         ->type('email', 'ohio@ohio.com')
         ->type('password', 'ohios123')
