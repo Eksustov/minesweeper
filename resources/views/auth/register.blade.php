@@ -33,7 +33,7 @@
             </div>
 
             {{-- Card --}}
-            <div class="glass rounded-2xl shadow-2xl p-6 sm:p-7 ring-1 ring-black/5 dark:ring-white/10">
+            <div class="glass text-black rounded-2xl shadow-2xl p-6 sm:p-7 ring-1 ring-black/5 dark:ring-white/10">
                 <h1 class="text-2xl font-semibold tracking-tight text-gray-900 dark:text-gray-100">Create your account</h1>
                 <p class="mt-1 text-sm text-gray-600 dark:text-gray-400">It only takes a minute.</p>
 

@@ -35,7 +35,7 @@
             </div>
 
             {{-- Card becomes 2-col on md+ --}}
-            <div class="glass rounded-2xl shadow-2xl ring-1 ring-black/5 dark:ring-white/10 overflow-hidden">
+            <div class="glass text-black rounded-2xl shadow-2xl ring-1 ring-black/5 dark:ring-white/10 overflow-hidden">
                 <div class="grid grid-cols-1 md:grid-cols-2">
                     {{-- Left side (only shows on md+) --}}
                     <div class="hidden md:flex flex-col justify-center p-10 bg-gradient-to-br from-white/40 to-white/10 dark:from-slate-900/40 dark:to-slate-900/10">
