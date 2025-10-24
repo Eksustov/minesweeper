@@ -33,7 +33,7 @@
             </div>
 
             {{-- Card --}}
-            <div class="glass rounded-2xl shadow-2xl p-6 sm:p-7 ring-1 ring-black/5 dark:ring-white/10">
+            <div class="glass text-black rounded-2xl shadow-2xl p-6 sm:p-7 ring-1 ring-black/5 dark:ring-white/10">
                 <h1 class="text-2xl font-semibold tracking-tight text-gray-900 dark:text-gray-100">Create your account</h1>
                 <p class="mt-1 text-sm text-gray-600 dark:text-gray-400">It only takes a minute.</p>
 
@@ -118,17 +118,6 @@
                             </button>
                         </div>
                         <x-input-error :messages="$errors->get('password_confirmation')" class="mt-2" />
-                    </div>
-
-                    {{-- Terms (optional) --}}
-                    <div class="mt-4">
-                        <label class="flex items-start gap-3">
-                            <input type="checkbox" id="checkbox" class="mt-1 rounded border-gray-300 text-indigo-600 shadow-sm focus:ring-indigo-500" required>
-                            <span class="text-sm text-gray-600 dark:text-gray-300">
-                                I agree to the <a href="#" class="font-medium text-indigo-600 hover:text-indigo-500">Terms</a> and
-                                <a href="#" class="font-medium text-indigo-600 hover:text-indigo-500">Privacy Policy</a>.
-                            </span>
-                        </label>
                     </div>
 
                     {{-- Submit --}}

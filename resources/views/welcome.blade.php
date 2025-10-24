@@ -26,7 +26,7 @@
                 </div>
                 <div class="mb-4">
                     <label class="block text-white font-medium mb-1">Max Players</label>
-                    <input type="number" name="max_players" value="2" min="2" max="10"
+                    <input type="number" name="max_players" value="2" min="1" max="8"
                         class="w-full border border-gray-300 rounded-lg p-2 focus:ring-2 focus:ring-indigo-300 focus:outline-none"
                         required>
                 </div>
