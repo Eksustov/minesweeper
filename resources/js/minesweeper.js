@@ -7,7 +7,7 @@ import axios from "axios";
 export default function initMinesweeper(config) {
     // Extract config values
     let {
-        userId,            // 👈 make sure you pass this from blade: userId: {{ auth()->id() }}
+        userId,
         roomId,
         playerColor,
         rows,
