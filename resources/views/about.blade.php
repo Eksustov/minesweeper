@@ -6,7 +6,7 @@
             <div class="bg-white overflow-hidden shadow-sm sm:rounded-lg">
                 <div class="p-6 text-gray-900">
                     <h1 class="text-3xl font-bold">About us</h1>
-                    <div><span class="font-semibold">Hello. I work on this project. Skbidi skibidi</div>
+                    <div><span class="font-semibold">Hello! My name is Elvis and I made this website Minesweeper Live. I am still learning the ropes of programming and trying to get better at it.</div>
                 </div>
             </div>
         </div>
