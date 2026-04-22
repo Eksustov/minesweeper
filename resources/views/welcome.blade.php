@@ -1,6 +1,24 @@
 @section('title', 'Main page')
 <x-app-layout>
 
+    @if (session('success') || session('error'))
+        <div id="toast-container" class="fixed top-5 right-5 z-50 space-y-2">
+            
+            @if (session('success'))
+                <div class="toast bg-green-500 text-white px-4 py-2 rounded-lg shadow-lg text-sm transition-all duration-300">
+                    {{ session('success') }}
+                </div>
+            @endif
+
+            @if (session('error'))
+                <div class="toast bg-red-500 text-white px-4 py-2 rounded-lg shadow-lg text-sm">
+                    {{ session('error') }}
+                </div>
+            @endif
+
+        </div>
+    @endif
+
     @php
         $selectedType = old('type') ?? 'public';
     @endphp
@@ -41,13 +59,6 @@
         @auth
         <div class="bg-white shadow-xl rounded-2xl p-6 w-full max-w-md">
             <h3 class="text-xl font-semibold mb-4 text-gray-800">Join a Room by Code</h3>
-            @if (session('error'))
-                <div class="mb-3 text-sm text-red-600">{{ session('error') }}</div>
-            @endif
-            @if (session('success'))
-                <div class="mb-3 text-sm text-green-600">{{ session('success') }}</div>
-            @endif
-
             <form method="POST" action="{{ route('rooms.joinByCode') }}" class="flex space-x-2">
                 @csrf
                 <input
@@ -130,6 +141,20 @@
     </div>
 
     <script>
+
+        // Toast auto-hide
+        document.addEventListener('DOMContentLoaded', () => {
+            const toasts = document.querySelectorAll('.toast');
+
+            toasts.forEach((toast, index) => {
+                setTimeout(() => {
+                    toast.style.opacity = '0';
+                    toast.style.transform = 'translateY(-10px)';
+                    setTimeout(() => toast.remove(), 300);
+                }, 2500 + (index * 300)); // stagger multiple messages
+            });
+        });
+        
             document.addEventListener('DOMContentLoaded', () => {
             // --- Create card gradient (optional, keep if you have that card) ---
             const card  = document.getElementById('createRoomCard');
