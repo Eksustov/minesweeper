@@ -6,7 +6,7 @@ use App\Models\Room;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Str;
-use App\Events\{PlayerJoined, PlayerLeft, PlayerKicked, RoomUpdated};
+use App\Events\{PlayerJoined, PlayerLeft, PlayerKicked, RoomUpdated, RoomClosed};
 
 class RoomController extends Controller
 {
@@ -198,18 +198,33 @@ class RoomController extends Controller
 
     public function leave(Room $room)
     {
-        $room->players()->detach(auth()->id());
+        $user = auth()->user();
+
+        if ($room->user_id === $user->id) {
+
+            broadcast(new RoomClosed($room->id));
+
+            $room->players()->detach();
+
+            $room->delete();
+
+            return redirect()->route('welcome')
+                ->with('success', 'You closed the room.');
+        }
+
+        $room->players()->detach($user->id);
         $room->load('players');
 
         if ($room->players->isEmpty()) {
-            broadcast(new RoomUpdated($room))->toOthers();
+            broadcast(new RoomUpdated($room));
             $room->delete();
         } else {
-            broadcast(new RoomUpdated($room))->toOthers();
-            broadcast(new PlayerLeft($room))->toOthers();
+            broadcast(new RoomUpdated($room));
+            broadcast(new PlayerLeft($room));
         }
 
-        return redirect()->route('welcome')->with('success', 'You left the room.');
+        return redirect()->route('welcome')
+            ->with('success', 'You left the room.');
     }
 
     public function kick(Request $request, Room $room)

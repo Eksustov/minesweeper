@@ -233,6 +233,7 @@
 
     {{-- Scripts --}}
     <script>
+        initRoomListeners(@json($room->id));
         if (!window.__colorPicker) {
             window.__colorPicker = (function () {
                 let myDot = null, pop = null, sheet = null;

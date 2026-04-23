@@ -4,7 +4,26 @@
 
 Something about Minesweeper Live here -->
 
-- I hate it
+## Kā ieinstalēt un ieslēgt projektu
+- git clone https://github.com/Eksustov/minesweeper
+
+- cd minesweeper
+
+- composer install
+
+- npm install
+
+- php artisan migrate
+
+- php artisan key:generate
+
+Un pie tam klāt arī vajadzēs aizpildīt viss kas ir saistīts ar pusher env failā
+Tas nozīmē ka vajadzēs izveidot kontu
+
+- composer run dev
+
+- php artisan queue:work
+
 ## Te būs dokumentācija man liekas
 
 Te būs dokumentācija pašlaik neuzklikšķini[documentation](https://laravel.com/docs)

@@ -53,6 +53,7 @@
 
     <!-- Game configuration -->
     <script>
+        initRoomListeners(@json($room->id));
         window.config = {
             userId: {{ auth()->id() }},
             roomId: {{ $room->id }},
