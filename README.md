@@ -26,7 +26,7 @@ Tas nozīmē ka vajadzēs izveidot kontu
 
 ## Te būs dokumentācija man liekas
 
-Te būs dokumentācija pašlaik neuzklikšķini[documentation](https://laravel.com/docs)
+Te būs dokumentācija pašlaik neuzklikšķini [documentation](https://laravel.com/docs)
 
 ## Minesweeper Live Sponsers
 

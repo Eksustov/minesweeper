@@ -53,7 +53,11 @@
 
     <!-- Game configuration -->
     <script>
-        initRoomListeners(@json($room->id));
+        initRoomListeners({
+            roomId: @json($room->id),
+            userId: @json(auth()->id()),
+            redirectUrl: @json(route('welcome')),
+        });
         window.config = {
             userId: {{ auth()->id() }},
             roomId: {{ $room->id }},

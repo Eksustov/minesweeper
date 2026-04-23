@@ -9,3 +9,5 @@ Alpine.start();
 import './pages/room.js';
 
 import './minesweeper.js'; 
+
+import './room-listeners.js';

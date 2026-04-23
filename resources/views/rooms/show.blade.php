@@ -233,7 +233,13 @@
 
     {{-- Scripts --}}
     <script>
-        initRoomListeners(@json($room->id));
+        window.addEventListener('DOMContentLoaded', () => {
+                window.initRoomListeners({
+                    roomId: @json($room->id),
+                    userId: @json(auth()->id()),
+                    redirectUrl: @json(route('welcome')),
+                });
+        });
         if (!window.__colorPicker) {
             window.__colorPicker = (function () {
                 let myDot = null, pop = null, sheet = null;
@@ -525,45 +531,6 @@
 
             // Echo channel listeners
             const roomId = meta.dataset.roomId;
-            const ch = window.Echo.channel(`room.${roomId}`);
-
-            // Start game -> redirect
-            const gameUrl = "{{ route('games.show', $room) }}";
-            ch.listen('.GameStarted', (e) => {
-                if (!e || typeof e !== 'object') return;
-                if (window.location.href !== gameUrl) window.location.href = gameUrl;
-            });
-
-            // RoomUpdated -> rebuild list
-            ch.listen('.RoomUpdated', (e) => {
-                if (Array.isArray(e.players)) {
-                    window.rebuildPlayersList(e.players);
-                }
-            });
-
-            // Join/Leave fallbacks
-            ch.listen('.PlayerJoined', (e) => {
-                if (Array.isArray(e.players)) window.rebuildPlayersList(e.players);
-            });
-            ch.listen('.PlayerLeft', (e) => {
-                if (Array.isArray(e.players)) window.rebuildPlayersList(e.players);
-            });
-
-            // If kicked while here -> bounce home; else update list/capacity
-            ch.listen('.PlayerKicked', (e) => {
-                @auth
-                if (e.playerId === {{ auth()->id() }}) {
-                window.location.href = "{{ route('welcome') }}";
-                return;
-                }
-                @endauth
-                if (Array.isArray(e.players)) {
-                window.rebuildPlayersList(e.players);
-                } else {
-                const current = document.querySelectorAll('#playersList > li').length;
-                window.updateCapacity(current);
-                }
-            });
 
             // Initial capacity + color picker wire
             window.updateCapacity(document.querySelectorAll('#playersList > li').length);
