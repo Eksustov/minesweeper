@@ -42,4 +42,3 @@ class PlayerJoined implements ShouldBroadcast
         return 'PlayerJoined';
     }
 }
-

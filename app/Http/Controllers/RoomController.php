@@ -239,7 +239,7 @@ class RoomController extends Controller
                 'color'  => $p->pivot->color ?? '#ccc',
                 'isHost' => $p->id === $room->creator->id,
             ];
-        })->values();
+        })->values()->toArray();;
 
         // IMPORTANT:
         // - Send a "RoomUpdated" to everyone (do NOT chain ->toOthers()) so the HOST also receives it.
