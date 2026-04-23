@@ -203,7 +203,7 @@ export default function initMinesweeper(config) {
 
         const gate = isRateLimitedLocal(r, c);
         if (!gate.ok) {
-            blip(gate.reason === 'cell' ? 'Hold up…' : 'Too fast…');
+            blip(gate.reason === 'cell' ? 'Wait' : 'Too fast');
             return;
         }
         markAction(r, c);
@@ -239,7 +239,7 @@ export default function initMinesweeper(config) {
 
         const gate = isRateLimitedLocal(r, c);
         if (!gate.ok) {
-            blip(gate.reason === 'cell' ? 'Hold up…' : 'Too fast…');
+            blip(gate.reason === 'cell' ? 'Wait' : 'Too fast');
             return;
         }
         markAction(r, c);
