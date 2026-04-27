@@ -8,13 +8,13 @@ use App\Http\Controllers\GameController;
 use App\Models\Room;
 
 Route::get('/', function () {
+    return view('landingpage');
+})->name('landingpage');
+
+Route::get('/welcome', function () {
     $rooms = \App\Models\Room::all();
     return view('welcome', compact('rooms'));
 })->name('welcome');
-
-Route::get('/landing', function () {
-    return view('landingpage');
-})->name('landingpage');
 
 Route::get('/aboutus', function () {
     return view('about');

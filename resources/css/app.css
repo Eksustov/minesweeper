@@ -22,6 +22,10 @@
     background: #e5e7eb;         /* gray-300 */
     user-select: none;
   }
+
+  .ms-cell.highlight {
+      background: #fde047; 
+  }
   
   .ms-cell-revealed {
     background: #f3f4f6;         /* gray-100 */

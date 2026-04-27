@@ -46,7 +46,7 @@ export default function initMinesweeper(config) {
                     isAllowed = false;
                     disableBoard("You were removed from the room.");
                 } finally {
-                    window.location.href = "/";
+                    window.location.href = "/welcome";
                 }
                 return;
             }
@@ -422,6 +422,16 @@ export default function initMinesweeper(config) {
             }
         });
 
+        channel.listen(".RoomClosed", (e) => {
+            isAllowed = false;
+
+            disableBoard("Host left, room closed.");
+
+            setTimeout(() => {
+                window.location.href = "/welcome";
+            }, 300);
+        });
+
         channel.listen(".GameStarted", (e) => {
             if (!isAllowed) return;
             initialBoard = Array.isArray(e.board) ? e.board : JSON.parse(e.board);
@@ -442,7 +452,7 @@ export default function initMinesweeper(config) {
                 isAllowed = false;
                 disableBoard("You were removed from the room.");
                 setTimeout(() => {
-                    window.location.href = "/";
+                    window.location.href = "/welcome";
                 }, 200);
             }
         });

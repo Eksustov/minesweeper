@@ -7,13 +7,13 @@ window.initRoomListeners = ({ roomId, userId, redirectUrl }) => {
     const ch = Echo.channel(channelName);
 
     ch.listen('.RoomClosed', () => {
-        alert('Host left, room closed');
         window.location.href = redirectUrl;
     });
 
     ch.listen('.GameStarted', (e) => {
-        if (e?.url && window.location.href !== e.url) {
-            window.location.href = e.url;
+        const gameUrl = `/games/${roomId}`; // or your actual route
+        if (window.location.href !== gameUrl) {
+            window.location.href = gameUrl;
         }
     });
 

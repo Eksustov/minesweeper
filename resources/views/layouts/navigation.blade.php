@@ -16,6 +16,13 @@
 
                 <!-- Desktop links -->
                 <div class="hidden sm:flex items-center gap-6">
+                    <a href="{{ route('landingpage') }}"
+                       class="relative text-sm font-medium transition
+                              {{ request()->routeIs('landingpage') ? 'text-white' : 'text-white/80 hover:text-white/90' }}">
+                        Start Page
+                        <span class="{{ request()->routeIs('landingpage') ? 'absolute -bottom-2 left-0 h-0.5 w-full bg-white/90 rounded-full' : 'hidden' }}"></span>
+                    </a>
+
                     <a href="{{ route('welcome') }}"
                        class="relative text-sm font-medium transition
                               {{ request()->routeIs('welcome') ? 'text-white' : 'text-white/80 hover:text-white/90' }}">
