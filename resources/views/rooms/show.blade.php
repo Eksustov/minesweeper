@@ -121,22 +121,51 @@
                                     </select>
                                 </div>
 
-                                <div id="customSettings" x-show="d === 'custom'" x-transition.opacity class="grid grid-cols-3 gap-3">
+                                <div 
+                                    x-data="{
+                                        rows: 10,
+                                        cols: 10,
+                                        mines: 10,
+                                        get maxMines() {
+                                            return Math.floor(this.rows * this.cols * 0.4);
+                                        }
+                                    }"
+                                    id="customSettings" 
+                                    x-show="d === 'custom'" 
+                                    x-transition.opacity 
+                                    class="grid grid-cols-3 gap-3"
+                                >
+
+                                    <!-- Rows -->
                                     <div>
                                         <label class="block text-xs font-medium text-gray-600 mb-1">Rows</label>
-                                        <input type="number" name="rows" min="5" max="50" value="10"
-                                               class="w-full rounded-lg border-gray-300 focus:border-indigo-500 focus:ring-indigo-500">
+                                        <input type="number" name="rows" min="5" max="20"
+                                            x-model.number="rows"
+                                            class="w-full rounded-lg border-gray-300 focus:border-indigo-500 focus:ring-indigo-500">
                                     </div>
+
+                                    <!-- Columns -->
                                     <div>
                                         <label class="block text-xs font-medium text-gray-600 mb-1">Columns</label>
-                                        <input type="number" name="cols" min="5" max="50" value="10"
-                                               class="w-full rounded-lg border-gray-300 focus:border-indigo-500 focus:ring-indigo-500">
+                                        <input type="number" name="cols" min="5" max="20"
+                                            x-model.number="cols"
+                                            class="w-full rounded-lg border-gray-300 focus:border-indigo-500 focus:ring-indigo-500">
                                     </div>
+
+                                    <!-- Mines -->
                                     <div>
-                                        <label class="block text-xs font-medium text-gray-600 mb-1">Mines</label>
-                                        <input type="number" name="mines" min="1" value="10"
-                                               class="w-full rounded-lg border-gray-300 focus:border-indigo-500 focus:ring-indigo-500">
+                                        <label class="block text-xs font-medium text-gray-600 mb-1">
+                                            Mines
+                                            <span class="text-gray-400 text-[10px]">(max: <span x-text="maxMines"></span>)</span>
+                                        </label>
+
+                                        <input type="number" name="mines" min="1"
+                                            :max="maxMines"
+                                            x-model.number="mines"
+                                            @input="if (mines > maxMines) mines = maxMines"
+                                            class="w-full rounded-lg border-gray-300 focus:border-indigo-500 focus:ring-indigo-500">
                                     </div>
+
                                 </div>
 
                                 <button type="submit"

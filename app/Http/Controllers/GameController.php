@@ -130,27 +130,34 @@ class GameController extends Controller
         if ($room->user_id !== auth()->id()) {
             return back()->with('error', 'Only the creator can start the game.');
         }
-    
+
         if ($room->games()->where('started', true)->exists()) {
             return redirect()->route('games.show', $room);
         }
-    
-        [$rows,$cols,$mines] = $this->getGameSettings($request->input('difficulty','easy'), $request);
-        $board = $this->minesweeperService->generateBoard($rows,$cols,$mines);
-    
+
+        [$rows, $cols, $mines] = $this->getGameSettings(
+            $request->input('difficulty','easy'), 
+            $request
+        );
+
+        $maxMines = floor($rows * $cols * 0.4);
+        $mines = min($mines, $maxMines);
+
+        $board = $this->minesweeperService->generateBoard($rows, $cols, $mines);
+
         $game = $room->games()->create([
             'difficulty' => $request->input('difficulty', 'easy'),
             'rows' => $rows,
             'cols' => $cols,
             'mines' => $mines,
-            'board' => $board,           // <—
+            'board' => $board,
             'flags' => [],
             'revealed' => [],
             'started' => true,
         ]);
-    
+
         broadcast(new GameStarted($room->id, $board, $rows, $cols, $mines))->toOthers();
-    
+
         return redirect()->route('games.show', $room);
     }
 
