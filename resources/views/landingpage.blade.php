@@ -11,7 +11,7 @@
             </h1>
 
             <p class="text-base sm:text-lg text-gray-600 leading-relaxed">
-                Play Minesweeper like never before — collaborate with others in real-time 
+                Play Minesweeper with others in real-time 
                 and clear the board together without making mistakes.
             </p>
 
