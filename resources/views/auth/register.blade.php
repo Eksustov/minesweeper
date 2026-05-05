@@ -55,11 +55,12 @@
                             class="block mt-1 w-full"
                             type="text"
                             name="name"
+                            maxlength="20"
                             :value="old('name')"
                             required
                             autocomplete="name"
                             pattern="^[A-Za-z0-9 _.\-]{1,50}$"
-                            title="Only letters, numbers, spaces, underscores (_), dots (.), and hyphens (-) are allowed."
+                            title="Only letters and numbers are allowed (max 20 characters)."
                         />
                         <x-input-error :messages="$errors->get('name')" class="mt-2" />
                     </div>
@@ -147,17 +148,15 @@
         const nameInput = document.getElementById('name');
         if (!nameInput) return;
 
-        const allowed = /^[A-Za-z0-9 _.\-]+$/;
         nameInput.addEventListener('input', () => {
-            // Strip everything not allowed
-            nameInput.value = nameInput.value.replace(/[^A-Za-z0-9 _.\-]/g, '');
+            nameInput.value = nameInput.value.replace(/[^A-Za-z0-9]/g, '');
         });
 
         // Prevent paste of disallowed characters
         nameInput.addEventListener('paste', (e) => {
             e.preventDefault();
             const text = (e.clipboardData || window.clipboardData).getData('text') || '';
-            const sanitized = text.replace(/[^A-Za-z0-9 _.\-]/g, '');
+            const sanitized = text.replace(/[^A-Za-z0-9]/g, '');
             document.execCommand('insertText', false, sanitized);
         });
     });

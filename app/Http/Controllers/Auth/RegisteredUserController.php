@@ -30,16 +30,13 @@ class RegisteredUserController extends Controller
     {
         $validated = $request->validate([
             // Only letters, numbers, spaces, underscore, dot, hyphen
-            'name' => ['required', 'string', 'max:50', 'regex:/^[A-Za-z0-9 _.\-]+$/'],
+            'name' => ['required', 'string', 'max:20', 'regex:/^[A-Za-z0-9]+$/'],
             'email' => ['required', 'string', 'lowercase', 'email', 'max:255', 'unique:' . User::class],
             // Strong password (keeps symbols allowed) + confirmation
             'password' => ['required', 'confirmed', Rules\Password::defaults()],
         ], [
-            'name.regex' => 'Name may contain only letters, numbers, spaces, underscores (_), dots (.) and hyphens (-).',
+            'name.regex' => 'Username may contain only letters and numbers (no spaces or special characters).',
         ]);
-
-        // Optional sanitation
-        $validated['name'] = preg_replace('/\s+/', ' ', trim($validated['name']));
 
         $user = User::create([
             'name'     => $validated['name'],
